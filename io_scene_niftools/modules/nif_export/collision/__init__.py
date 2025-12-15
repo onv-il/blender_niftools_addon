@@ -72,6 +72,8 @@ class Collision:
             # Skip bhkListShape sub-shapes for now
             if b_col_obj.parent.rigid_body:
                 continue
+            
+            n_parent_node = None
 
             # Get parent node from object dictionary
             if b_col_obj.parent:
@@ -96,12 +98,18 @@ class Collision:
                 if self.target_game in ('OBLIVION', 'OBLIVION_KF'):
                     if NifClasses.OblivionLayer.from_value(layer) == 'OL_BIPED':
                         self.bhk_blend_collision_helper.export_bhk_blend_collision(b_col_obj)
+
                 elif self.target_game in ('FALLOUT_3', 'Fallout_NV'):
                     if NifClasses.Fallout3Layer.from_value(layer) == 'FOL_BIPED':
                         self.bhk_blend_collision_helper.export_bhk_blend_collision(b_col_obj)
+                        #collisionObject = self.bhk_blend_collision_helper.export_bhk_blend_collision(b_col_obj)
+                        #n_parent_node.collision_object = collisionObject
+
                 self.bhk_collision_helper.export_bhk_collision(b_col_obj, n_parent_node, layer)
+
             elif self.target_game in ('ZOO_TYCOON_2',):
                 self.ni_collision_helper.export_nicollisiondata(b_col_obj, n_parent_node)
+
             else:
                 NifLog.warn(f"Collision not supported for game '{self.target_game}', "
                             f"skipped collision object '{b_col_obj.name}'")
