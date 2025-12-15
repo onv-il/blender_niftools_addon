@@ -40,6 +40,7 @@
 
 import os
 
+import bpy
 from bpy.types import Scene
 
 from io_scene_niftools.modules.nif_export.animation.object import ObjectAnimation
@@ -53,12 +54,18 @@ from io_scene_niftools.utils.singleton import NifOp, NifData
 class KfExport(NifCommon):
     """Main KF export class."""
 
+    export_types = ('ARMATURE')  # Only export empties, meshes, and armatures
+
     def __init__(self, operator, context):
         NifCommon.__init__(self, operator, context)
 
         # Export helpers
         self.transform_anim = ObjectAnimation()
         self.scene_helper = Scene()
+
+        # Blender objects to be exported
+        self.b_main_objects = []
+        self.b_armatures = []
 
         # Common export properties
         self.target_game = None
@@ -81,6 +88,11 @@ class KfExport(NifCommon):
 
             prefix = "x" if self.target_game in 'MORROWIND' else ""
             # TODO[anim] - Change to KfData, but create_controller() [and maybe more] has to be updated first
+
+            # Get exportable armatures in the Blender scene
+            self.__find_export_objects()
+            if not self.b_armatures:
+                raise NifError("No valid armatures to export!")
 
             b_armature = math.get_armature()
             # Some scenes may not have an armature, so nothing to do here
@@ -117,3 +129,26 @@ class KfExport(NifCommon):
 
         self.target_game, self.version, n_data = self.scene_helper.get_version_data()
         NifData.init(n_data)
+
+    def __find_export_objects(self):
+        """
+        Find all exportable Blender objects.
+        Separate into lists for root objects, armatures,
+        collision objects, constraints, and particle systems.
+        """
+
+        objectsToSearch = None
+
+        if NifOp.props.use_selected:
+            objectsToSearch = bpy.context.selected_objects
+        elif NifOp.props.use_visible:
+            objectsToSearch = bpy.context.visible_objects
+        else:
+            objectsToSearch = bpy.context.scene.objects
+
+        for b_obj in objectsToSearch:
+            if b_obj.type in self.export_types:
+                self.b_main_objects.append(b_obj)
+
+                if b_obj.type == 'ARMATURE':
+                    self.b_armatures.append(b_obj)
