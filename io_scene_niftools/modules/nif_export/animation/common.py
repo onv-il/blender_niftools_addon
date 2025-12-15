@@ -90,7 +90,8 @@ class AnimationCommon(ABC):
         if b_obj:
             if b_obj.animation_data and b_obj.animation_data.action:
                 b_action = b_obj.animation_data.action
-                if b_action.fcurves:
+
+                if b_action.is_empty == False:
                     return b_action
 
     @staticmethod
@@ -133,7 +134,14 @@ class AnimationCommon(ABC):
             n_kfc = block_store.create_block("NiKeyframeController", None)
         else:
             n_kfc = block_store.create_block("NiTransformController", None)
-            n_kfi = block_store.create_block("NiTransformInterpolator", None)
+
+            if target_name == "Bip01 NonAccum" and not isinstance(parent_block, NifClasses.NiControllerSequence):
+                bhkBlendController = block_store.create_block("bhkBlendController", None)
+                bhkBlendController.target = parent_block
+                n_kfc.next_controller = bhkBlendController
+            else:
+                n_kfi = block_store.create_block("NiTransformInterpolator", None)
+
             # link interpolator from the controller
             n_kfc.interpolator = n_kfi
         # if parent is a node, attach controller to that node
@@ -205,6 +213,6 @@ class AnimationCommon(ABC):
         if not b_action.pose_markers:
             NifLog.info("Defining default action pose markers.")
             for frame, text in zip(b_action.frame_range,
-                                   ("Idle: Start/Idle: Loop Start", "Idle: Loop Stop/Idle: Stop")):
+                                   ("start", "end")):
                 marker = b_action.pose_markers.new(text)
                 marker.frame = int(frame)
