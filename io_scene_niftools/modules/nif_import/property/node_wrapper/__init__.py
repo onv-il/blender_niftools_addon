@@ -547,25 +547,25 @@ class NodeWrapper:
             )
 
             # Set up the node group internals
-            b_separate_node = b_group_nodes.new('ShaderNodeSeparateRGB')
+            b_separate_node = b_group_nodes.new('ShaderNodeSeparateColor')
             b_separate_node.location = (-150, 100)
 
             b_invert_node = b_group_nodes.new('ShaderNodeInvert')
             b_invert_node.location = (0, 100)
 
-            b_combine_node = b_group_nodes.new('ShaderNodeCombineRGB')
+            b_combine_node = b_group_nodes.new('ShaderNodeCombineColor')
             b_combine_node.location = (150, 100)
 
             # Link the nodes within the group
             b_group_links = b_node_group.links
-            b_group_links.new(b_separate_node.outputs['R'], b_combine_node.inputs['R'])  # Red
-            b_group_links.new(b_separate_node.outputs['G'], b_invert_node.inputs['Color'])  # Green (invert)
-            b_group_links.new(b_invert_node.outputs['Color'], b_combine_node.inputs['G'])  # Green (inverted)
-            b_group_links.new(b_separate_node.outputs['B'], b_combine_node.inputs['B'])  # Blue
+            b_group_links.new(b_separate_node.outputs['Red'], b_combine_node.inputs['Red'])  # Red
+            b_group_links.new(b_separate_node.outputs['Green'], b_invert_node.inputs['Color'])  # Green (invert)
+            b_group_links.new(b_invert_node.outputs['Color'], b_combine_node.inputs['Green'])  # Green (inverted)
+            b_group_links.new(b_separate_node.outputs['Blue'], b_combine_node.inputs['Blue'])  # Blue
 
             # Link the input and output nodes to the group sockets
-            b_group_links.new(b_input_node.outputs[b_input_socket.name], b_separate_node.inputs['Image'])
-            b_group_links.new(b_combine_node.outputs['Image'], b_group_output.inputs[b_output_socket.name])
+            b_group_links.new(b_input_node.outputs[b_input_socket.name], b_separate_node.inputs['Color'])
+            b_group_links.new(b_combine_node.outputs['Color'], b_group_output.inputs[b_output_socket.name])
 
         # Add the group node to the main node tree and link it
         b_group_node = b_nodes.new('ShaderNodeGroup')
