@@ -256,11 +256,11 @@ class TransformAnimation(Animation):
                 return
             times = list(n_kfc.get_times())
             keys = [NifClasses.Vector3.from_value(tuple_key) for tuple_key in n_kfc.get_translations()]
-            self.import_keys(LOC, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
+            self.import_keys(LOC, b_armature or b_target, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
             keys = [NifClasses.Quaternion.from_value(tuple_key) for tuple_key in n_kfc.get_rotations()]
-            self.import_keys(QUAT, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
+            self.import_keys(QUAT, b_armature or b_target, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
             keys = list(n_kfc.get_scales())
-            self.import_keys(SCALE, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
+            self.import_keys(SCALE, b_armature or b_target, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
             return b_action
         elif isinstance(n_kfc, NifClasses.NiMultiTargetTransformController):
             # not sure what this is used for
@@ -285,24 +285,24 @@ class TransformAnimation(Animation):
                 keys_res = [interpolate(times_all, times, keys) for times, keys in times_keys]
                 # for eulers, the actual interpolation type is apparently stored per channel
                 interp = self.get_b_interp_from_n_interp(n_kfd.xyz_rotations[0].interpolation)
-                self.import_keys(EULER, b_action, bone_name, times_all, zip(*keys_res), flags, interp, n_bind_rot_inv,
+                self.import_keys(EULER, b_armature or b_target, b_action, bone_name, times_all, zip(*keys_res), flags, interp, n_bind_rot_inv,
                                  n_bind_trans)
             else:
                 b_target.rotation_mode = "QUATERNION"
                 times, keys = self.get_keys_values(n_kfd.quaternion_keys)
                 interp = self.get_b_interp_from_n_interp(n_kfd.rotation_type)
-                self.import_keys(QUAT, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
+                self.import_keys(QUAT, b_armature or b_target, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
             times, keys = self.get_keys_values(n_kfd.scales.keys)
             interp = self.get_b_interp_from_n_interp(n_kfd.scales.interpolation)
-            self.import_keys(SCALE, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
+            self.import_keys(SCALE, b_armature or b_target, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
 
             times, keys = self.get_keys_values(n_kfd.translations.keys)
             interp = self.get_b_interp_from_n_interp(n_kfd.translations.interpolation)
-            self.import_keys(LOC, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
+            self.import_keys(LOC, b_armature or b_target, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans)
 
         return b_action
 
-    def import_keys(self, key_type, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans):
+    def import_keys(self, key_type, b_obj, b_action, bone_name, times, keys, flags, interp, n_bind_rot_inv, n_bind_trans):
         """Imports key frames according to the specified key_type"""
         if not keys:
             return
@@ -314,7 +314,7 @@ class TransformAnimation(Animation):
         # correct for bone space if target is an armature bone
         if bone_name:
             keys = [key_corrector(key, n_bind_rot_inv, n_bind_trans) for key in keys]
-        self.add_keys(b_action, key_type, range(key_dim), flags, times, keys, interp, bone_name=bone_name)
+        self.add_keys(b_obj, b_action, key_type, range(key_dim), flags, times, keys, interp, bone_name=bone_name)
         self.set_max_key_time()
 
     def import_transforms(self, n_block, b_obj, bone_name=None):
