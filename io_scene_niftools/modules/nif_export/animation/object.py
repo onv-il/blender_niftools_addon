@@ -47,7 +47,6 @@ from io_scene_niftools.utils.consts import QUAT, EULER, LOC, SCALE
 from io_scene_niftools.utils.logging import NifError, NifLog
 from nifgen.formats.nif import classes as NifClasses
 
-
 class ObjectAnimation(AnimationCommon):
 
     def __init__(self):
@@ -60,7 +59,9 @@ class ObjectAnimation(AnimationCommon):
             return
 
         # get the hide fcurve
-        fcurves = [fcu for fcu in b_action.fcurves if "hide" in fcu.data_path]
+        actionFCurves = b_action.layers[0].strips[0].channelbag(b_action.slots[0]).fcurves
+
+        fcurves = [fcu for fcu in actionFCurves if "hide" in fcu.data_path]
         if not fcurves:
             return
 
@@ -115,6 +116,7 @@ class ObjectAnimation(AnimationCommon):
         scene = bpy.context.scene
         nif_scene = scene.niftools_scene
         game = nif_scene.game
+
         if game in ('MORROWIND', 'FREEDOM_FORCE'):
             kf_root = block_store.create_block("NiSequenceStreamHelper")
         elif nif_scene.is_bs() or game in (
@@ -126,12 +128,23 @@ class ObjectAnimation(AnimationCommon):
 
         anim_textextra = self.create_text_keys(kf_root)
         targetname = "Scene Root"
+        b_action = None
 
         # per-node animation
         if b_armature:
             b_action = self.get_active_action(b_armature)
+
+            if not b_action:
+                animData = b_armature.animation_data
+                nlaTracks = animData.nla_tracks
+
+                for track in nlaTracks:
+                    if track.select:
+                        b_action = track.strips[0].action
+
             for b_bone in b_armature.data.bones:
                 self.export_ni_transform_controller(kf_root, b_armature, b_action, b_bone)
+                self.export_ni_vis_controller(kf_root, b_action)
             if nif_scene.is_skyrim():
                 targetname = "NPC Root [Root]"
             else:
@@ -153,8 +166,9 @@ class ObjectAnimation(AnimationCommon):
         kf_root.unknown_int_1 = 1
         kf_root.weight = 1.0
         kf_root.cycle_type = NifClasses.CycleType.CYCLE_CLAMP
+        
         kf_root.frequency = 1.0
-        if game in ('SID_MEIER_S_PIRATES',):
+        if nif_scene.is_bs() or game in ('SID_MEIER_S_PIRATES',):
             kf_root.accum_root_name = targetname
 
         if anim_textextra.num_text_keys > 0:
@@ -186,11 +200,17 @@ class ObjectAnimation(AnimationCommon):
         # just for more detailed error reporting later on
         bonestr = ""
 
+        actionGroups = b_action.layers[0].strips[0].channelbag(b_action.slots[0]).groups
+
         # skeletal animation - with bone correction & coordinate corrections
-        if bone and bone.name in b_action.groups:
+        if bone and bone.name in actionGroups:
             # get bind matrix for bone
             bind_matrix = math.get_object_bind(bone)
-            exp_fcurves = b_action.groups[bone.name].channels
+            
+            # exp_fcurves = b_action.groups[bone.name].channels
+
+            exp_fcurves = actionGroups[bone.name].channels
+
             # just for more detailed error reporting later on
             bonestr = f" in bone {bone.name}"
             target_name = block_store.get_full_name(bone)
@@ -341,20 +361,25 @@ class ObjectAnimation(AnimationCommon):
         n_text_extra.num_text_keys = len(b_action.pose_markers)
         n_text_extra.reset_field("text_keys")
         f0, f1 = b_action.frame_range
-        for key, marker in zip(n_text_extra.text_keys, b_action.pose_markers):
+
+        # sort pose markers by their active frame
+        # fixes text keys exporting in the order they're added instead of order they appear
+        sortedPoseMarkers = sorted(b_action.pose_markers, key=lambda timelineMarker: timelineMarker.frame)
+
+        for key, marker in zip(n_text_extra.text_keys, sortedPoseMarkers):
             f = marker.frame
             if (f < f0) or (f > f1):
                 NifLog.warn(f"Marker out of animated range ({f} not between [{f0}, {f1}])")
             key.time = f / self.fps
             key.value = marker.name.replace('/', '\r\n')
 
-    def add_dummy_controllers(self):
+    def add_dummy_controllers(self, b_armature):
         NifLog.info("Adding controllers and interpolators for skeleton")
         # note: block_store.block_to_obj changes during iteration, so need list copy
         for n_block in list(block_store.block_to_obj.keys()):
             if isinstance(n_block, NifClasses.NiNode) and n_block.name == "Bip01":
                 for n_bone in n_block.tree(block_type=NifClasses.NiNode):
-                    n_kfc, n_kfi = self.transform_anim.create_controller(n_bone, n_bone.name)
+                    n_kfc, n_kfi = b_armature.transform_anim.create_controller(n_bone, n_bone.name)
                     # todo [anim] use self.nif_export.animationhelper.set_flags_and_timing
                     n_kfc.flags = 12
                     n_kfc.frequency = 1.0
