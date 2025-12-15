@@ -43,6 +43,7 @@ from io_scene_niftools.modules.nif_export import types
 from io_scene_niftools.modules.nif_export.animation.object import ObjectAnimation
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.utils import math
+from io_scene_niftools.utils.singleton import NifOp
 
 
 class Armature:
@@ -67,6 +68,10 @@ class Armature:
             if not b_bone.parent:
                 self.export_bone(b_obj, b_bone, n_root_node, n_root_node)
         b_obj.data.pose_position = old_position
+
+        # export empty nitransformcontrollers (FNV)
+        if NifOp.props.export_dummy_nitransformcontrollers and b_obj.type == 'ARMATURE' and bpy.context.scene.niftools_scene.is_bs():
+            self.transform_anim.add_dummy_controllers(self)
 
     def export_bone(self, b_obj, b_bone, n_parent_node, n_root_node):
         """Exports a bone and all of its children."""
