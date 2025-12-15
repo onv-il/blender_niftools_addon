@@ -1,0 +1,16 @@
+{
+    "animation": "ALL_NIF",
+    "bs_animation_node": false,
+    "stripify": true,
+    "flatten_skin": false,
+    "skin_partition": true,
+    "pad_bones": false,
+    "max_bones_per_partition": 18,
+    "max_bones_per_vertex": 4,
+    "force_dds": true,
+    "optimise_materials": true,
+    "sep_tangent_space": false,
+    "use_selected": false,
+    "use_visible": false,
+    "export_dummy_nitransformcontrollers": false
+}
