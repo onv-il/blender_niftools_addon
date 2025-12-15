@@ -51,14 +51,21 @@ from io_scene_niftools.utils.decorators import register_classes, unregister_clas
 class BoneProperties(PropertyGroup):
     flags: IntProperty(
         name='Bone Flag',
-        default=0
+        description='Flags to be set on the bone\'s corresponding NiNode.',
+        default=0,
+        override={"LIBRARY_OVERRIDABLE"},
     )
     priority: IntProperty(
         name='Bone Priority',
-        default=0
+        description='Priority to be set on the controlled block using this bone\'s animation data.',
+        default=0,
+        min=0,
+        max=127,
+        override={"LIBRARY_OVERRIDABLE"},
     )
     longname: StringProperty(
-        name='Nif Long Name'
+        name='Nif Long Name',
+        description='Name that the bone\'s corresponding NiNode will have upon export.',
     )
 
 
