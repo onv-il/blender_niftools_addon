@@ -176,7 +176,7 @@ class Animation:
         if b_template_nla_strip.use_reverse:
             n_ni_controller_sequence.cycle_type = NifClasses.CycleType['CYCLE_REVERSE']
         elif b_template_nla_strip.use_animated_time_cyclic:
-            n_ni_controller_sequence.cycle_type = NifClasses.CycleType['CYCLE_REVERSE']
+            n_ni_controller_sequence.cycle_type = NifClasses.CycleType['CYCLE_LOOP']
         else:
             n_ni_controller_sequence.cycle_type = NifClasses.CycleType['CYCLE_CLAMP']
 
