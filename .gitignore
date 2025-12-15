@@ -5,6 +5,7 @@ docs/refresh_python_api.bat
 docs/refresh_python_api.lnk
 install/temp
 install/dependencies
+io_scene_niftools/dependencies
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
