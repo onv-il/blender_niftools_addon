@@ -59,9 +59,11 @@ class MaterialAnimation(AnimationCommon):
         if not n_mat_prop:
             raise ValueError("Bug!! must add material property before exporting alpha controller")
         colors = (("alpha", None),
+                  ("emission_strength", None),
                   ("niftools.ambient_color", NifClasses.MaterialColor.TC_AMBIENT),
                   ("diffuse_color", NifClasses.MaterialColor.TC_DIFFUSE),
-                  ("specular_color", NifClasses.MaterialColor.TC_SPECULAR))
+                  ("specular_color", NifClasses.MaterialColor.TC_SPECULAR),
+                  ("emission_color", NifClasses.MaterialColor.TC_SELF_ILLUM))
         # the actual export
         for b_dtype, n_dtype in colors:
             self.export_material_alpha_color_controller(b_material, n_mat_prop, b_dtype, n_dtype)
@@ -73,7 +75,9 @@ class MaterialAnimation(AnimationCommon):
         if not b_material.animation_data:
             return
 
-        fcurves = [fcu for fcu in b_material.animation_data.action.fcurves if b_dtype in fcu.data_path]
+        materialAction = b_material.animation_data.action
+
+        fcurves = [fcu for fcu in materialAction.layers[0].strips[0].channelbag(materialAction.slots[0]).fcurves if b_dtype in fcu.data_path]
         if not fcurves:
             return
 
@@ -82,6 +86,10 @@ class MaterialAnimation(AnimationCommon):
             keydata = "NiFloatData"
             interpolator = "NiFloatInterpolator"
             controller = "NiAlphaController"
+        elif b_dtype == "emissive_mult":
+            keydata = "NiFloatData"
+            interpolator = "NiFloatInterpolator"
+            controller = "BSMaterialEmittanceMultController"
         else:
             keydata = "NiPosData"
             interpolator = "NiPoint3Interpolator"
@@ -99,7 +107,7 @@ class MaterialAnimation(AnimationCommon):
             # add each point of the curves
             n_key.arg = n_key_data.data.interpolation
             n_key.time = frame / self.fps
-            if b_dtype == "alpha":
+            if b_dtype == "alpha" or b_dtype == "emission_strength":
                 n_key.value = fcurves[0].keyframe_points[i].co[1]
             else:
                 n_key.value.x, n_key.value.y, n_key.value.z = [fcu.keyframe_points[i].co[1] for fcu in fcurves]
