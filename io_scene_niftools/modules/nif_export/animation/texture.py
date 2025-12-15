@@ -73,7 +73,7 @@ class TextureAnimation(AnimationCommon):
             NifLog.warn("Trying to export NiTextureTransformController!")
 
             # Ensure the action is linked to an object root
-            if not b_action.id_root == 'OBJECT':
+            if not b_action.slots[0].target_id_type == 'OBJECT':
                 continue
 
             # Ensure UV Warp modifiers are present
@@ -106,11 +106,13 @@ class TextureAnimation(AnimationCommon):
                     f"(ensure that an unsupported shader property is not applied)."
                 )
                 continue
+            
+            actionFCurves = b_action.layers[0].strips[0].channelbag(b_action.slots[0]).fcurves
 
             # Iterate through FCurves linked to UV Warp modifiers
             previous_controller = None
             for uv_warp in uv_warp_modifiers:
-                for fcurve in b_action.fcurves:
+                for fcurve in actionFCurves:
                     if fcurve.data_path not in uv_warp_data_paths:
                         continue
 
