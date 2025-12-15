@@ -43,7 +43,6 @@ import os.path
 import bpy
 
 from io_scene_niftools.file_io import File
-from io_scene_niftools.file_io.config import Config
 
 from io_scene_niftools.nif_common import NifCommon
 
@@ -163,8 +162,17 @@ class NifExport(NifCommon):
         collision objects, constraints, and particle systems.
         """
 
-        for b_obj in bpy.context.scene.objects:
-            if b_obj.type in self.export_types and b_obj.visible_get():
+        objectsToSearch = None
+
+        if NifOp.props.use_selected:
+            objectsToSearch = bpy.context.selected_objects
+        elif NifOp.props.use_visible:
+            objectsToSearch = bpy.context.visible_objects
+        else:
+            objectsToSearch = bpy.context.scene.objects
+
+        for b_obj in objectsToSearch:
+            if b_obj.type in self.export_types:
                 self.b_main_objects.append(b_obj)
 
                 if not b_obj.parent:
