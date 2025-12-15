@@ -92,6 +92,7 @@ class OperatorExportArmaturePanel(OperatorSetting, Panel):
         layout.prop(operator, "flatten_skin")
         layout.prop(operator, "skin_partition")
         layout.prop(operator, "pad_bones")
+        layout.prop(operator, "export_dummy_nitransformcontrollers")
         layout.prop(operator, "max_bones_per_partition")
         layout.prop(operator, "max_bones_per_vertex")
 
@@ -145,8 +146,31 @@ class OperatorExportOptimisePanel(OperatorSetting, Panel):
         layout.prop(operator, "optimise_materials")
         layout.prop(operator, "sep_tangent_space")
 
+class OperatorExportIncludePanel(OperatorSetting, Panel):
+    bl_label = "Include"
+    bl_idname = "NIFTOOLS_PT_export_operator_include"
+
+    @classmethod
+    def poll(cls, context):
+        sfile = context.space_data
+        operator = sfile.active_operator
+
+        return operator.bl_idname == "EXPORT_SCENE_OT_nif"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
+
+        sfile = context.space_data
+        operator = sfile.active_operator
+
+        layout.prop(operator, "use_selected")
+        layout.prop(operator, "use_visible")
+
 
 classes = [
+    OperatorExportIncludePanel,
     OperatorExportTransformPanel,
     OperatorExportArmaturePanel,
     OperatorExportAnimationPanel,
