@@ -39,7 +39,7 @@
 
 
 from bpy.types import Panel
-from bpy_types import UIList
+from bpy.types import UIList
 
 from io_scene_niftools.utils.decorators import register_classes, unregister_classes
 
