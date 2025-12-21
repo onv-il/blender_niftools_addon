@@ -42,13 +42,51 @@ from abc import ABC
 
 import bpy
 
-from bpy_extras import anim_utils
-
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.utils.logging import NifLog, NifError
 from io_scene_niftools.utils.singleton import NifOp, NifData
 from nifgen.formats.nif import classes as NifClasses
 
+def add_dummy_markers(b_action):
+    # if we exported animations, but no animation groups are defined,
+    # define a default animation group
+    NifLog.info("Checking action pose markers.")
+    if not b_action.pose_markers:
+        NifLog.info("Defining default action pose markers.")
+        for frame, text in zip(b_action.frame_range,
+                                ("start", "end")):
+            marker = b_action.pose_markers.new(text)
+            marker.frame = int(frame)
+
+def create_text_keys(kf_root):
+    """Create the text keys before filling in the data so that the extra data hierarchy is correct"""
+    # add a NiTextKeyExtraData block
+    n_text_extra = block_store.create_block("NiTextKeyExtraData")
+    if isinstance(kf_root, NifClasses.NiControllerSequence):
+        kf_root.text_keys = n_text_extra
+    elif isinstance(kf_root, NifClasses.NiSequenceStreamHelper):
+        kf_root.add_extra_data(n_text_extra)
+    return n_text_extra
+
+def export_text_keys(fps, b_action, n_text_extra):
+    """Process b_action's pose markers and populate the extra string data block."""
+    NifLog.info("Exporting animation groups")
+    add_dummy_markers(b_action)
+    # create a text key for each frame descriptor
+    n_text_extra.num_text_keys = len(b_action.pose_markers)
+    n_text_extra.reset_field("text_keys")
+    f0, f1 = b_action.frame_range
+
+    # sort pose markers by their active frame
+    # fixes text keys exporting in the order they're added instead of order they appear
+    sortedPoseMarkers = sorted(b_action.pose_markers, key=lambda timelineMarker: timelineMarker.frame)
+
+    for key, marker in zip(n_text_extra.text_keys, sortedPoseMarkers):
+        f = marker.frame
+        if (f < f0) or (f > f1):
+            NifLog.warn(f"Marker out of animated range ({f} not between [{f0}, {f1}])")
+        key.time = f / fps
+        key.value = marker.name.replace('/', '\r\n')
 
 class AnimationCommon(ABC):
 
@@ -209,17 +247,6 @@ class AnimationCommon(ABC):
 
         NifLog.warn(f"Unsupported interpolation mode ({b_ipol}) in blend, using quadratic/bezier.")
         return NifClasses.KeyType.QUADRATIC_KEY
-
-    def add_dummy_markers(self, b_action):
-        # if we exported animations, but no animation groups are defined,
-        # define a default animation group
-        NifLog.info("Checking action pose markers.")
-        if not b_action.pose_markers:
-            NifLog.info("Defining default action pose markers.")
-            for frame, text in zip(b_action.frame_range,
-                                   ("start", "end")):
-                marker = b_action.pose_markers.new(text)
-                marker.frame = int(frame)
 
     def get_fcurves_from_action(self, b_action):
         new_fcurves = []
