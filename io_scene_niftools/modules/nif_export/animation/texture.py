@@ -43,9 +43,11 @@ from io_scene_niftools.modules.nif_export.animation.common import AnimationCommo
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.modules.nif_export.object import DICT_NAMES
 from io_scene_niftools.modules.nif_export.property.texture.common import TextureCommon
+from io_scene_niftools.utils import consts
 from io_scene_niftools.utils.logging import NifLog
 from io_scene_niftools.utils.singleton import NifData
 from nifgen.formats.nif import classes as NifClasses
+
 
 
 class TextureAnimation(AnimationCommon):
@@ -86,10 +88,8 @@ class TextureAnimation(AnimationCommon):
 
             # Check if the FCurve data path corresponds to UV Warp modifier properties
             uv_warp_data_paths = [
-                f"modifiers[\"{uv_warp.name}\"].offset_u",
-                f"modifiers[\"{uv_warp.name}\"].offset_v",
-                f"modifiers[\"{uv_warp.name}\"].scale_u",
-                f"modifiers[\"{uv_warp.name}\"].scale_v",
+                f"modifiers[\"{uv_warp.name}\"].offset",
+                f"modifiers[\"{uv_warp.name}\"].scale",
                 f"modifiers[\"{uv_warp.name}\"].rotation",
             ]
 
@@ -106,35 +106,42 @@ class TextureAnimation(AnimationCommon):
                     f"(ensure that an unsupported shader property is not applied)."
                 )
                 continue
-            
-            actionFCurves = b_action.layers[0].strips[0].channelbag(b_action.slots[0]).fcurves
+
+            n_tex_desc = n_ni_texturing_property.base_texture
+            n_tex_desc.has_texture_transform = True
+            n_tex_desc.translation.u, n_tex_desc.translation.v = (0, 0)
+            n_tex_desc.scale.u, n_tex_desc.scale.v = (1, 1)
+            n_tex_desc.rotation = 0.0
+            n_tex_desc.transform_method = NifClasses.TransformMethod.MAX
+            n_tex_desc.center.u, n_tex_desc.center.v = (0.5, 0.5)
+
+
+            # actionFCurves = b_action.layers[0].strips[0].channelbag(b_action.slots[0]).fcurves
+            action_fcurves = self.get_fcurves_from_action(b_action)
 
             # Iterate through FCurves linked to UV Warp modifiers
-            previous_controller = None
-            for uv_warp in uv_warp_modifiers:
-                for fcurve in actionFCurves:
-                    if fcurve.data_path not in uv_warp_data_paths:
-                        continue
+            for fcurve in action_fcurves:
 
-                    operation = self.get_operation_from_data_path(fcurve.data_path)
-                    if not operation:
-                        continue
+                NifLog.warn(f"{fcurve.data_path}")
 
-                    # Export NiTextureTransformController
-                    n_ni_texture_transform_controller = self.export_ni_texture_transform_controller(
-                        n_ni_texturing_property, fcurve, b_action, operation
+                if fcurve.data_path not in uv_warp_data_paths:
+                    continue
+
+                operation = self.get_operation_from_fcurve(fcurve)
+
+                if not operation:
+                    continue
+
+                # Export NiTextureTransformController
+                n_ni_texture_transform_controller = self.export_ni_texture_transform_controller(
+                    n_ni_texturing_property, fcurve, b_action, operation
+                )
+
+                # Attach to sequence if present
+                if n_ni_controller_sequence:
+                    self.attach_to_sequence(
+                        n_ni_texture_transform_controller, n_ni_controller_sequence, n_ni_geometry, operation
                     )
-
-                    # Link controllers
-                    if previous_controller:
-                        previous_controller.next_controller = n_ni_texture_transform_controller
-                    previous_controller = n_ni_texture_transform_controller
-
-                    # Attach to sequence if present
-                    if n_ni_controller_sequence:
-                        self.attach_to_sequence(
-                            n_ni_texture_transform_controller, n_ni_controller_sequence, n_ni_geometry, operation
-                        )
 
     def export_ni_texture_transform_controller(self, n_ni_texturing_property, fcurve, b_action, operation):
         """Export a NiTextureTransformController block."""
@@ -143,11 +150,8 @@ class TextureAnimation(AnimationCommon):
 
         n_ni_texture_transform_controller = block_store.create_block("NiTextureTransformController")
 
-        n_ni_texturing_property.controller = n_ni_texture_transform_controller
-        n_ni_texture_transform_controller.target = n_ni_texturing_property
-
-        n_ni_texture_transform_controller.texture_slot = NifClasses.TexType['BASE_MAP']
-        n_ni_texture_transform_controller.operation = operation
+        n_ni_texture_transform_controller.texture_slot = NifClasses.TexType.BASE_MAP
+        n_ni_texture_transform_controller.operation = operation[0]
         n_ni_texture_transform_controller.start_time = b_action.frame_start / self.fps
         n_ni_texture_transform_controller.stop_time = b_action.frame_end / self.fps
 
@@ -155,58 +159,79 @@ class TextureAnimation(AnimationCommon):
         n_ni_float_interpolator = block_store.create_block("NiFloatInterpolator")
         n_ni_texture_transform_controller.interpolator = n_ni_float_interpolator
 
-        n_ni_float_data = block_store.create_block("NiFloatData")
+        # Export FCurve keys
+        n_ni_float_data = self.export_fcurve_to_nif_keys(fcurve)
+
         n_ni_float_interpolator.data = n_ni_float_data
 
-        # Export FCurve keys
-        self.export_fcurve_to_nif_keys(fcurve, n_ni_float_data)
-
+        n_ni_texturing_property.add_controller(n_ni_texture_transform_controller)
+        
         return n_ni_texture_transform_controller
 
     def attach_to_sequence(self, controller, sequence, geometry, operation):
         """Attach controller to a NiControllerSequence."""
-        n_controlled_block = sequence.add_block
+
+        n_ni_blend_float_interpolator = block_store.create_block("NiBlendFloatInterpolator")
+
+        n_ni_blend_float_interpolator.array_size = 2
+        n_ni_blend_float_interpolator.reset_field("interp_array_items")
+
+        n_ni_blend_float_interpolator.value = consts.FLOAT_MIN
+        n_ni_blend_float_interpolator.flags.manager_controlled = True
+
+        n_controlled_block = sequence.add_controlled_block()
         n_controlled_block.controller = controller
+        n_controlled_block.interpolator = controller.interpolator
+
+        controller.interpolator = n_ni_blend_float_interpolator
+
         n_controlled_block.node_name = geometry.name
         n_controlled_block.property_type = "NiTexturingProperty"
         n_controlled_block.controller_type = "NiTextureTransformController"
-        n_controlled_block.controller_id = f"0-0-{operation}"
+        n_controlled_block.controller_id = f"0-0-{operation[1]}"
 
-    def get_operation_from_data_path(self, data_path):
+    def get_operation_from_fcurve(self, fcurve):
         """Map a data path to a NIF transform operation."""
+
+        transform_member = None
+        transform_string = None
+
+        data_path = fcurve.data_path
+        
         if "offset" in data_path:
-            return "TT_TRANSLATE_U" if "[0]" in data_path else "TT_TRANSLATE_V"
+            transform_member = NifClasses.TransformMember.TT_TRANSLATE_U if fcurve.array_index == 0 else NifClasses.TransformMember.TT_TRANSLATE_V
+            transform_string = "TT_TRANSLATE_U" if fcurve.array_index == 0 else "TT_TRANSLATE_V"
+
+            return (transform_member, transform_string)
         elif "scale" in data_path:
-            return "TT_SCALE_U" if "[0]" in data_path else "TT_SCALE_V"
+            transform_member = NifClasses.TransformMember.TT_SCALE_U if fcurve.array_index == 0 else NifClasses.TransformMember.TT_SCALE_V
+            transform_string = "TT_SCALE_U" if fcurve.array_index == 0 else "TT_SCALE_V"
+
+            return (transform_member, transform_string)
         elif "rotation" in data_path:
-            return "TT_ROTATE"
+            transform_member = NifClasses.TransformMember.TT_ROTATE
+            transform_string = "TT_ROTATE"
+
+            return (transform_member, transform_string)
         return None
 
-    def export_fcurve_to_nif_keys(self, fcurve, n_ni_float_data):
-        """Export FCurve keyframes to NiFloatData."""
-        keys = []
-        for keyframe in fcurve.keyframe_points:
-            time = keyframe.co[0] / self.fps
+    def export_fcurve_to_nif_keys(self, fcurve):
+        n_ni_float_data = block_store.create_block("NiFloatData")
+        n_ni_float_data.data.num_keys = len(fcurve.keyframe_points)
+        n_ni_float_data.data.reset_field("keys")
+
+        for keyframe, n_key in zip(fcurve.keyframe_points, n_ni_float_data.data.keys):
+            time = keyframe.co[0]
             value = keyframe.co[1]
-            interpolation = keyframe.interpolation
 
-            nif_key = NifClasses.NiFloatKey()
-            nif_key.time = time
-            nif_key.value = value
-            nif_key.interpolation = self.get_nif_interpolation(interpolation)
+            # add each point of the curves
+            n_key.interpolation = self.get_n_interp_from_b_interp(keyframe.interpolation)
+            n_key.time = time / self.fps
+            n_key.value = value
 
-            keys.append(nif_key)
+        n_ni_float_data.data.interpolation = NifClasses.KeyType.LINEAR_KEY
 
-        n_ni_float_data.keys = keys
-
-    def get_nif_interpolation(self, blender_interpolation):
-        """Map Blender interpolation to NIF interpolation types."""
-        interpolation_map = {
-            'LINEAR': NifClasses.KeyType.LINEAR_KEY,
-            'CONSTANT': NifClasses.KeyType.CONSTANT_KEY,
-            'BEZIER': NifClasses.KeyType.QUADRATIC_KEY,
-        }
-        return interpolation_map.get(blender_interpolation, NifClasses.KeyType.LINEAR_KEY)
+        return n_ni_float_data
 
     def export_ni_uv_controller(self, n_ni_geometry, b_action):
         """Export a NiUVController block."""
