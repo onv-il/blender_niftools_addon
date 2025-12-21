@@ -41,6 +41,9 @@
 from abc import ABC
 
 import bpy
+
+from bpy_extras import anim_utils
+
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.utils.logging import NifLog, NifError
 from io_scene_niftools.utils.singleton import NifOp, NifData
@@ -112,6 +115,7 @@ class AnimationCommon(ABC):
                     node_kfctrls[node] = []
                 node_kfctrls[node].append(ctrl)
         return node_kfctrls
+
 
     def create_controller(self, parent_block, target_name, priority=0):
         # todo[anim] - make independent of global NifData.data.version, and move check for NifOp.props.animation outside
@@ -216,3 +220,26 @@ class AnimationCommon(ABC):
                                    ("start", "end")):
                 marker = b_action.pose_markers.new(text)
                 marker.frame = int(frame)
+
+    def get_fcurves_from_action(self, b_action):
+        new_fcurves = []
+
+        for slot in b_action.slots:
+            actionFCurves = b_action.layers[0].strips[0].channelbag(slot).fcurves
+
+            for fcurve in actionFCurves:
+                new_fcurves.append(fcurve)
+
+        return new_fcurves
+    
+    @staticmethod
+    def iter_frame_key(fcurves, mathutilclass):
+        """
+        Iterator that yields a tuple of frame and key for all fcurves.
+        Assumes the fcurves are sampled at the same time and all have the same amount of keys
+        Return the key in the desired MathutilsClass
+        """
+        for point in zip(*[fcu.keyframe_points for fcu in fcurves]):
+            frame = point[0].co[0]
+            key = [k.co[1] for k in point]
+            yield frame, mathutilclass(key)
