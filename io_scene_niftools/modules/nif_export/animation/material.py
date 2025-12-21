@@ -37,9 +37,12 @@
 #
 # ***** END LICENSE BLOCK *****
 
+import mathutils
 
 from io_scene_niftools.modules.nif_export.animation.common import AnimationCommon
 from io_scene_niftools.modules.nif_export.block_registry import block_store
+from io_scene_niftools.modules.nif_export.object import DICT_NAMES
+from io_scene_niftools.utils.logging import NifError, NifLog
 from nifgen.formats.nif import classes as NifClasses
 
 
@@ -48,81 +51,182 @@ class MaterialAnimation(AnimationCommon):
     def __init__(self):
         super().__init__()
 
-    def export_material_animations(self, b_material, n_mat_prop):
+    def export_material_animations(self, b_controlled_blocks, n_ni_controller_sequence=None):
         """Export material animations for given geometry."""
 
-        self.export_material_controllers(b_material, n_mat_prop)
+        for b_controlled_block in b_controlled_blocks:
+            b_strip, b_obj = b_controlled_block
+            b_action = b_strip.action
 
-    def export_material_controllers(self, b_material, n_mat_prop):
-        """Export material animation data for given geometry."""
+            n_ni_geometry = DICT_NAMES[b_obj.name]
+            n_mat_prop = next(
+                (prop for prop in n_ni_geometry.properties if isinstance(prop, NifClasses.NiMaterialProperty)),
+                None
+            )
 
-        if not n_mat_prop:
-            raise ValueError("Bug!! must add material property before exporting alpha controller")
-        colors = (("alpha", None),
-                  ("emission_strength", None),
-                  ("niftools.ambient_color", NifClasses.MaterialColor.TC_AMBIENT),
-                  ("diffuse_color", NifClasses.MaterialColor.TC_DIFFUSE),
-                  ("specular_color", NifClasses.MaterialColor.TC_SPECULAR),
-                  ("emission_color", NifClasses.MaterialColor.TC_SELF_ILLUM))
-        # the actual export
-        for b_dtype, n_dtype in colors:
-            self.export_material_alpha_color_controller(b_material, n_mat_prop, b_dtype, n_dtype)
+            if not n_mat_prop:
+                NifLog.warn(
+                    f"Object {b_obj.name} has no NiMaterialProperty! "
+                    f"Material animation for {b_action.name} will not be exported "
+                    f"(ensure that an unsupported shader property is not applied)."
+                )
+                continue
+            
+            self.export_material_alpha_color_controller(n_mat_prop, n_ni_geometry, b_action, n_ni_controller_sequence)
 
-    def export_material_alpha_color_controller(self, b_material, n_mat_prop, b_dtype, n_dtype):
+    def export_material_alpha_color_controller(self, n_mat_prop, n_ni_geometry, b_action, n_ni_controller_sequence=None):
         """Export the material alpha or color controller data."""
 
-        # get fcurves
-        if not b_material.animation_data:
-            return
+        action_fcurves = self.get_fcurves_from_action(b_action)
 
-        materialAction = b_material.animation_data.action
+        ambient_color_fcurves = [fcu for fcu in action_fcurves if "ambient" in fcu.data_path]
+        diffuse_color_fcurves = [fcu for fcu in action_fcurves if "diffuse" in fcu.data_path]
+        emission_color_fcurves = [fcu for fcu in action_fcurves if "emission_color" in fcu.data_path or "inputs[27]" in fcu.data_path]
+        specular_color_fcurves = [fcu for fcu in action_fcurves if "specular_tint" in fcu.data_path or "inputs[14]" in fcu.data_path]
 
-        fcurves = [fcu for fcu in materialAction.layers[0].strips[0].channelbag(materialAction.slots[0]).fcurves if b_dtype in fcu.data_path]
-        if not fcurves:
-            return
+        alpha_fcurves = [fcu for fcu in action_fcurves if "alpha" in fcu.data_path or "inputs[4]" in fcu.data_path]
+        emission_strength_fcurves = [fcu for fcu in action_fcurves if "emission_strength" in fcu.data_path or "inputs[28]" in fcu.data_path]
 
-        # just set the names of the nif data types, main difference between alpha and color
-        if b_dtype == "alpha":
-            keydata = "NiFloatData"
-            interpolator = "NiFloatInterpolator"
-            controller = "NiAlphaController"
-        elif b_dtype == "emissive_mult":
-            keydata = "NiFloatData"
-            interpolator = "NiFloatInterpolator"
-            controller = "BSMaterialEmittanceMultController"
-        else:
-            keydata = "NiPosData"
-            interpolator = "NiPoint3Interpolator"
-            controller = "NiMaterialColorController"
+        for fcus, num_fcus in ((ambient_color_fcurves, 3), (diffuse_color_fcurves, 3), (emission_color_fcurves, 3), (specular_color_fcurves, 3)):
+            if fcus and len(fcus) != num_fcus:
+                raise NifError(
+                    f"Incomplete color key set for action {b_action.name}."
+                    f"Ensure that if a color is keyframed for a property, the alpha channel is not keyframed.")
 
+        #TODO: enable export for ambient, diffuse, and specular animation
+
+        ambient_curves = []
+        diffuse_curves = []
+        emission_color_curves = []
+        specular_curves = []
+
+        alpha_curves = []
+        emission_strength_curves = []
+
+        for frame, ambient in self.iter_frame_key(ambient_color_fcurves, mathutils.Color):
+            ambient_curves.append((frame, ambient.from_scene_linear_to_srgb()))
+
+        for frame, diffuse in self.iter_frame_key(diffuse_color_fcurves, mathutils.Color):
+            diffuse_curves.append((frame, diffuse.from_scene_linear_to_srgb()))
+
+        for frame, emission_color in self.iter_frame_key(emission_color_fcurves, mathutils.Color):
+            emission_color_curves.append((frame, emission_color.from_scene_linear_to_srgb()))
+
+        for frame, specular in self.iter_frame_key(specular_color_fcurves, mathutils.Color):
+            specular_curves.append((frame, specular.from_scene_linear_to_srgb()))
+
+        for fcurve in alpha_fcurves:
+            for keyframe in fcurve.keyframe_points:
+                alpha_curves.append((keyframe.co[0], keyframe.co[1]))
+
+        for fcurve in emission_strength_fcurves:
+            for keyframe in fcurve.keyframe_points:
+                emission_strength_curves.append((keyframe.co[0], keyframe.co[1]))
+
+
+        if emission_color_curves:
+            self.export_emissive_color_controller(emission_color_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence)
+
+        if alpha_curves:
+            self.export_alpha_controller(alpha_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence)
+
+        if emission_strength_curves:
+            self.export_emissive_strength_controller(emission_strength_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence)
+
+    def export_emissive_color_controller(self, emission_color_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence=None):
         # create the key data
-        n_key_data = block_store.create_block(keydata, fcurves)
-        n_key_data.data.num_keys = len(fcurves[0].keyframe_points)
+        n_key_data = block_store.create_block("NiPosData")
+        n_key_data.data.num_keys = len(emission_color_curves)
         n_key_data.data.interpolation = NifClasses.KeyType.LINEAR_KEY
         n_key_data.data.reset_field("keys")
 
-        # assumption: all curves have same amount of keys and are sampled at the same time
-        for i, n_key in enumerate(n_key_data.data.keys):
-            frame = fcurves[0].keyframe_points[i].co[0]
-            # add each point of the curves
-            n_key.arg = n_key_data.data.interpolation
-            n_key.time = frame / self.fps
-            if b_dtype == "alpha" or b_dtype == "emission_strength":
-                n_key.value = fcurves[0].keyframe_points[i].co[1]
-            else:
-                n_key.value.x, n_key.value.y, n_key.value.z = [fcu.keyframe_points[i].co[1] for fcu in fcurves]
-        # if key data is present
-        # then add the controller so it is exported
-        if fcurves[0].keyframe_points:
-            n_mat_ctrl = block_store.create_block(controller, fcurves)
-            n_mat_ipol = block_store.create_block(interpolator, fcurves)
-            n_mat_ctrl.interpolator = n_mat_ipol
+        for key, (frame, color) in zip(n_key_data.data.keys, emission_color_curves):
+            key.time = frame / self.fps
+            key.value.x = color.r
+            key.value.y = color.g
+            key.value.z = color.b
 
-            self.set_flags_and_timing(n_mat_ctrl, fcurves)
-            # set target color only for color controller
-            if n_dtype:
-                n_mat_ctrl.set_target_color(n_dtype)
-            n_mat_ctrl.data = n_key_data
-            n_mat_ipol.data = n_key_data
-            # attach block to material property
-            n_mat_prop.add_controller(n_mat_ctrl)
+        n_mat_ctrl = block_store.create_block("NiMaterialColorController")
+        n_mat_ipol = block_store.create_block("NiPoint3Interpolator")
+        n_mat_ctrl.interpolator = n_mat_ipol
+
+        self.set_flags_and_timing(n_mat_ctrl, action_fcurves)
+
+        # set target color only for color controller
+        n_mat_ctrl.set_target_color(NifClasses.MaterialColor.TC_SELF_ILLUM)
+        n_mat_ipol.data = n_key_data
+
+        # attach block to material property
+        n_mat_prop.add_controller(n_mat_ctrl)
+
+        if n_ni_controller_sequence:
+            n_controlled_block = n_ni_controller_sequence.add_controlled_block()
+            n_controlled_block.controller = n_mat_ctrl
+            n_controlled_block.interpolator = n_mat_ipol
+            
+            n_controlled_block.node_name = n_ni_geometry.name
+            n_controlled_block.property_type = "NiMaterialProperty"
+            n_controlled_block.controller_type = "NiMaterialColorController"
+            n_controlled_block.controller_id = "TC_SELF_ILLUM"
+
+    def export_alpha_controller(self, alpha_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence=None):
+        # create the key data
+        n_key_data = block_store.create_block("NiFloatData")
+        n_key_data.data.num_keys = len(alpha_curves)
+        n_key_data.data.interpolation = NifClasses.KeyType.LINEAR_KEY
+        n_key_data.data.reset_field("keys")
+
+        for key, (frame, strength) in zip(n_key_data.data.keys, alpha_curves):
+            key.time = frame / self.fps
+            key.value = strength
+
+        n_mat_ctrl = block_store.create_block("NiAlphaController")
+        n_mat_ipol = block_store.create_block("NiFloatInterpolator")
+        n_mat_ctrl.interpolator = n_mat_ipol
+
+        self.set_flags_and_timing(n_mat_ctrl, action_fcurves)
+
+        n_mat_ipol.data = n_key_data
+
+        # attach block to material property
+        n_mat_prop.add_controller(n_mat_ctrl)
+
+        if n_ni_controller_sequence:
+            n_controlled_block = n_ni_controller_sequence.add_controlled_block()
+            n_controlled_block.controller = n_mat_ctrl
+            n_controlled_block.interpolator = n_mat_ipol
+            
+            n_controlled_block.node_name = n_ni_geometry.name
+            n_controlled_block.property_type = "NiMaterialProperty"
+            n_controlled_block.controller_type = "NiAlphaController"
+
+    def export_emissive_strength_controller(self, emission_strength_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence=None):
+        # create the key data
+        n_key_data = block_store.create_block("NiFloatData")
+        n_key_data.data.num_keys = len(emission_strength_curves)
+        n_key_data.data.interpolation = NifClasses.KeyType.LINEAR_KEY
+        n_key_data.data.reset_field("keys")
+
+        for key, (frame, strength) in zip(n_key_data.data.keys, emission_strength_curves):
+            key.time = frame / self.fps
+            key.value = strength
+
+        n_mat_ctrl = block_store.create_block("BSMaterialEmittanceMultController")
+        n_mat_ipol = block_store.create_block("NiFloatInterpolator")
+        n_mat_ctrl.interpolator = n_mat_ipol
+
+        self.set_flags_and_timing(n_mat_ctrl, action_fcurves)
+
+        n_mat_ipol.data = n_key_data
+
+        # attach block to material property
+        n_mat_prop.add_controller(n_mat_ctrl)
+
+        if n_ni_controller_sequence:
+            n_controlled_block = n_ni_controller_sequence.add_controlled_block()
+            n_controlled_block.controller = n_mat_ctrl
+            n_controlled_block.interpolator = n_mat_ipol
+            
+            n_controlled_block.node_name = n_ni_geometry.name
+            n_controlled_block.property_type = "NiMaterialProperty"
+            n_controlled_block.controller_type = "BSMaterialEmittanceMultController"
