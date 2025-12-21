@@ -40,6 +40,8 @@
 
 import bpy
 
+from io_scene_niftools.modules.nif_export.animation.common import create_text_keys, export_text_keys
+
 from io_scene_niftools.modules.nif_export.object import DICT_NAMES
 
 from io_scene_niftools.modules.nif_export.animation.geometry import GeometryAnimation
@@ -48,6 +50,9 @@ from io_scene_niftools.modules.nif_export.animation.object import ObjectAnimatio
 from io_scene_niftools.modules.nif_export.animation.particle import ParticleAnimation
 from io_scene_niftools.modules.nif_export.animation.shader import ShaderAnimation
 from io_scene_niftools.modules.nif_export.animation.texture import TextureAnimation
+
+from io_scene_niftools.modules.nif_export.animation.common import create_text_keys, export_text_keys
+
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.utils.logging import NifLog
 from nifgen.formats.nif import classes as NifClasses
@@ -156,11 +161,6 @@ class Animation:
 
             n_ni_controller_manager.next_controller = n_ni_multi_target_transform_controller
 
-
-            
-
-        
-
     def export_ni_controller_sequence(self, n_sequence_name, b_controlled_blocks, n_accum_root_name,
                                       n_ni_controller_manager=None):
         """
@@ -200,7 +200,9 @@ class Animation:
 
         # Export the controlled blocks and text keys
         self.export_controlled_blocks(n_ni_controller_sequence, b_controlled_blocks)
-        self.export_text_keys(n_ni_controller_sequence, b_controlled_blocks)
+
+        n_text_extra = create_text_keys(n_ni_controller_sequence)
+        export_text_keys(self.fps, b_template_nla_strip.action, n_text_extra)
 
         return n_ni_controller_sequence
 
@@ -214,11 +216,8 @@ class Animation:
         self.texture_animation_helper.export_texture_animations(b_controlled_blocks, n_ni_controller_sequence)
 
     def export_text_keys(self, n_ni_controller_sequence, b_controlled_blocks):
-        return
-
-
-'''
-        if bpy.context.scene.niftools_scene.game == 'MORROWIND':
+        pass
+        '''if bpy.context.scene.niftools_scene.game == 'MORROWIND':
             # animations without keyframe animations crash the TESCS
             # if we are in that situation, add a trivial keyframe animation
             has_keyframecontrollers = False
@@ -244,4 +243,4 @@ class Animation:
                             if n_root_node is block:
                                 n_root_node = new_block
 
-'''
+        '''
