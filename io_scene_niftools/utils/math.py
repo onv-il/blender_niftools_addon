@@ -73,7 +73,7 @@ def import_keymat(rest_rot_inv, key_matrix):
     return correction @ (rest_rot_inv @ key_matrix) @ correction_inv
 
 
-def export_keymat(rest_rot, key_matrix, bone):
+def export_keymat(rest_rot, key_matrix, bone=None):
     """Handles space conversions for exported keys """
     if bone:
         return rest_rot @ (correction_inv @ key_matrix @ correction)
