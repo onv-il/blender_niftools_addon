@@ -106,7 +106,7 @@ class BSShaderProperty:
 
         n_bs_shader_no_lighting_property.shader_type = NifClasses.BSShaderType[b_mat.nif_shader.bsspplp_shaderobjtype]
 
-        self.ni_texturing_property_helper.export_ni_texturing_property(b_mat, n_ni_geometry)
+        self.ni_texturing_property_helper.export_ni_texturing_property(b_mat, n_ni_geometry, n_bs_shader_no_lighting_property)
 
         BSShaderProperty.export_shader_flags(b_mat, n_bs_shader_no_lighting_property)
 
@@ -122,40 +122,39 @@ class BSShaderProperty:
 
         self.bs_shader_texture_set_helper.export_bs_lighting_shader_property_textures(n_bs_lighting_shader_property)
 
-        if b_mat.use_nodes:
-            b_principled_bsdf = b_mat.node_tree.nodes["Principled BSDF"]
+        b_principled_bsdf = b_mat.node_tree.nodes["Principled BSDF"]
 
-            if b_principled_bsdf.inputs['Emission Color'].is_linked:
-                b_color_node = b_principled_bsdf.inputs['Emission Color'].links[0].from_node
-                if isinstance(b_color_node, bpy.types.ShaderNodeMixRGB):
-                    color_blender_to_nif(n_bs_lighting_shader_property.emissive_color, b_color_node)
-            else:
-                color_blender_to_nif(n_bs_lighting_shader_property.emissive_color,
-                                     b_principled_bsdf.inputs['Emission Color'].default_value)
+        if b_principled_bsdf.inputs['Emission Color'].is_linked:
+            b_color_node = b_principled_bsdf.inputs['Emission Color'].links[0].from_node
+            if isinstance(b_color_node, bpy.types.ShaderNodeMixRGB):
+                color_blender_to_nif(n_bs_lighting_shader_property.emissive_color, b_color_node)
+        else:
+            color_blender_to_nif(n_bs_lighting_shader_property.emissive_color,
+                                    b_principled_bsdf.inputs['Emission Color'].default_value)
 
-            n_bs_lighting_shader_property.emissive_multiple = b_principled_bsdf.inputs[
-                'Emission Strength'].default_value
+        n_bs_lighting_shader_property.emissive_multiple = b_principled_bsdf.inputs[
+            'Emission Strength'].default_value
 
-            # TODO [shader]: Set up math node for diffuse map alpha * shader alpha
-            n_bs_lighting_shader_property.alpha = b_principled_bsdf.inputs['Alpha'].default_value
+        # TODO [shader]: Set up math node for diffuse map alpha * shader alpha
+        n_bs_lighting_shader_property.alpha = b_principled_bsdf.inputs['Alpha'].default_value
 
-            # Map specular IOR level (0.0 - 1.0) to glossiness (0.0 - 999.0)
-            n_bs_lighting_shader_property.glossiness = (1 - b_principled_bsdf.inputs[
-                'Specular IOR Level'].default_value) * 999
+        # Map specular IOR level (0.0 - 1.0) to glossiness (0.0 - 999.0)
+        n_bs_lighting_shader_property.glossiness = (1 - b_principled_bsdf.inputs[
+            'Specular IOR Level'].default_value) * 999
 
-            color_blender_to_nif(n_bs_lighting_shader_property.specular_color,
-                                 b_principled_bsdf.inputs['Specular Color'].default_value)
+        color_blender_to_nif(n_bs_lighting_shader_property.specular_color,
+                                b_principled_bsdf.inputs['Specular Color'].default_value)
 
-            # TODO [shader]: Set up math node for normal map alpha * shader specular strength
+        # TODO [shader]: Set up math node for normal map alpha * shader specular strength
 
-            if n_bs_shader_type == NifClasses.BSLightingShaderType.SKIN_TINT:
-                color_blender_to_nif(n_bs_lighting_shader_property.skin_tint_color,
-                                     b_principled_bsdf.inputs['Coat Tint'].default_value)
-            elif n_bs_shader_type == NifClasses.BSLightingShaderType.HAIR_TINT:
-                color_blender_to_nif(n_bs_lighting_shader_property.hair_tint_color,
-                                     b_principled_bsdf.inputs['Sheen Tint'].default_value)
+        if n_bs_shader_type == NifClasses.BSLightingShaderType.SKIN_TINT:
+            color_blender_to_nif(n_bs_lighting_shader_property.skin_tint_color,
+                                    b_principled_bsdf.inputs['Coat Tint'].default_value)
+        elif n_bs_shader_type == NifClasses.BSLightingShaderType.HAIR_TINT:
+            color_blender_to_nif(n_bs_lighting_shader_property.hair_tint_color,
+                                    b_principled_bsdf.inputs['Sheen Tint'].default_value)
 
-            # TODO [shader]: Add support for other Skyrim shader type properties
+        # TODO [shader]: Add support for other Skyrim shader type properties
 
         n_bs_lighting_shader_property.lighting_effect_1 = b_mat.nif_shader.lighting_effect_1
         n_bs_lighting_shader_property.lighting_effect_2 = b_mat.nif_shader.lighting_effect_2
@@ -171,21 +170,20 @@ class BSShaderProperty:
 
         self.bs_shader_texture_set_helper.export_bs_effect_shader_property_textures(n_bs_effect_shader_property)
 
-        if b_mat.use_nodes:
-            # TODO [shader]: Add support for other BSEffectShaderProperty properties
+        # TODO [shader]: Add support for other BSEffectShaderProperty properties
 
-            b_principled_bsdf = b_mat.node_tree.nodes["Principled BSDF"]
+        b_principled_bsdf = b_mat.node_tree.nodes["Principled BSDF"]
 
-            if b_principled_bsdf.inputs['Emission Color'].is_linked:
-                b_color_node = b_principled_bsdf.inputs['Emission Color'].links[0].from_node
-                if isinstance(b_color_node, bpy.types.ShaderNodeMixRGB):
-                    color_blender_to_nif(n_bs_effect_shader_property.emissive_color, b_color_node)
-            else:
-                color_blender_to_nif(n_bs_effect_shader_property.emissive_color,
-                                     b_principled_bsdf.inputs['Emission Color'].default_value)
+        if b_principled_bsdf.inputs['Emission Color'].is_linked:
+            b_color_node = b_principled_bsdf.inputs['Emission Color'].links[0].from_node
+            if isinstance(b_color_node, bpy.types.ShaderNodeMixRGB):
+                color_blender_to_nif(n_bs_effect_shader_property.emissive_color, b_color_node)
+        else:
+            color_blender_to_nif(n_bs_effect_shader_property.emissive_color,
+                                    b_principled_bsdf.inputs['Emission Color'].default_value)
 
-            n_bs_effect_shader_property.emissive_multiple = b_principled_bsdf.inputs[
-                'Emission Strength'].default_value
+        n_bs_effect_shader_property.emissive_multiple = b_principled_bsdf.inputs[
+            'Emission Strength'].default_value
 
         BSShaderProperty.export_shader_flags(b_mat, n_bs_effect_shader_property)
 
