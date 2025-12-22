@@ -1,4 +1,4 @@
-"""Nif Properties, nif specific custom properties definitions via Blender types"""
+"""Nif User Interface, connect custom properties from properties.py into Blenders UI"""
 
 # ***** BEGIN LICENSE BLOCK *****
 # 
@@ -38,34 +38,56 @@
 # ***** END LICENSE BLOCK *****
 
 
-from io_scene_niftools.utils.decorators import register_modules, unregister_modules
-from . import armature, collision, constraint, material, object, scene, shader, animation, particle_system
+from bpy.types import Panel
+
+from io_scene_niftools.utils.decorators import register_classes, unregister_classes
 
 
-def underscore_to_camelcase(s):
-    """Take the underscore-separated string s and return a camelCase
-    equivalent.  Initial and final underscores are preserved, and medial
-    pairs of underscores are turned into a single underscore."""
+class ParticleSystemPanel(Panel):
+    bl_idname = "NIFTOOLS_PT_ParticleSystemPanel"
+    bl_label = "NifTools Particle System"
 
-    def camelcase_words(words):
-        first_word_passed = False
-        for word in words:
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "particle"
 
-            if not word:
-                yield "_"
-                continue
-            if first_word_passed:
-                yield word.capitalize()
-            else:
-                yield word.lower()
-            first_word_passed = True
+    @classmethod
+    def poll(cls, context):
+        if context.particle_settings:
+            return True
+        return False
 
-    return ''.join(camelcase_words(s.split('_')))
+    def draw(self, context):
+        particle_setting = context.particle_settings.nif_particle_system
+        
+        layout = self.layout
 
-MODS = [animation, armature, collision, constraint, material, object, shader, scene, particle_system]
+        box = layout.box()
+
+        box.prop(particle_setting, "particle_system_type")
+        box.prop(particle_setting, "particle_emitter_type")
+
+        if particle_setting.particle_system_type == "BSStripParticleSystem":
+            box.prop(particle_setting, "bs_strip_max_point_count")
+
+        box.prop(particle_setting, "num_spawn_generations")
+        box.prop(particle_setting, "percentage_spawned")
+        box.prop(particle_setting, "spawn_on_death")
+        
+        box.prop(particle_setting, "min_num_to_spawn")
+        box.prop(particle_setting, "max_num_to_spawn")
+
+        box.prop(particle_setting, "num_subtexture_offsets")
+
+        box.prop(particle_setting, "random_rot_speed_sign")
+
+
+classes = [
+    ParticleSystemPanel
+]
 
 def register():
-    register_modules(MODS, __name__)
+    register_classes(classes, __name__)
 
 def unregister():
-    unregister_modules(MODS, __name__)
+    unregister_classes(classes, __name__)
