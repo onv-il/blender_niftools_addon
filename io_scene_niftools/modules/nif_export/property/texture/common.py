@@ -50,6 +50,52 @@ from io_scene_niftools.utils.singleton import NifOp
 from nifgen.formats.nif import classes as NifClasses
 
 
+def get_input_node_of_type(input_socket, node_types):
+    # search back in the node tree for nodes of a certain type(s), depth-first
+    links = input_socket.links
+    if not links:
+        # this socket has no inputs
+        return None
+    node = links[0].from_node
+    if isinstance(node, node_types):
+        # the input node is of the required type
+        return node
+    else:
+        if len(node.inputs) > 0:
+            for input in node.inputs:
+                # check every input if somewhere up that tree is a node of the required type
+                input_results = get_input_node_of_type(input, node_types)
+                if input_results:
+                    return input_results
+            # we found nothing
+            return None
+        else:
+            # this has no inputs, and doesn't classify itself
+            return None
+        
+def get_output_node_of_type(input_socket, node_types):
+    # search back in the node tree for nodes of a certain type(s), depth-first
+    links = input_socket.links
+    if not links:
+        # this socket has no inputs
+        return None
+    node = links[0].from_node
+    if isinstance(node, node_types):
+        # the input node is of the required type
+        return node
+    else:
+        if len(node.outputs) > 0:
+            for output in node.outputs:
+                # check every input if somewhere up that tree is a node of the required type
+                output_results = get_output_node_of_type(output, node_types)
+                if output_results:
+                    return output_results
+            # we found nothing
+            return None
+        else:
+            # this has no inputs, and doesn't classify itself
+            return None
+
 class TextureCommon:
     # Maps shader node input sockets to image texture nodes and NIF texture slots
     TEX_SLOT_MAP = {
@@ -76,29 +122,6 @@ class TextureCommon:
         """Reset all slot assignments."""
         self.slots = {slot: None for slot in self.TEX_SLOT_MAP.keys()}
 
-    def get_input_node_of_type(self, input_socket, node_types):
-        # search back in the node tree for nodes of a certain type(s), depth-first
-        links = input_socket.links
-        if not links:
-            # this socket has no inputs
-            return None
-        node = links[0].from_node
-        if isinstance(node, node_types):
-            # the input node is of the required type
-            return node
-        else:
-            if len(node.inputs) > 0:
-                for input in node.inputs:
-                    # check every input if somewhere up that tree is a node of the required type
-                    input_results = self.get_input_node_of_type(input, node_types)
-                    if input_results:
-                        return input_results
-                # we found nothing
-                return None
-            else:
-                # this has no inputs, and doesn't classify itself
-                return None
-
     def determine_texture_types(self, b_mat):
         """Determine texture slots based on shader node connections."""
         self._reset_fields()
@@ -109,7 +132,7 @@ class TextureCommon:
                 if isinstance(shader_node, mapping["shader_type"]):
                     input_socket = shader_node.inputs[mapping["socket_index"]]
                     if input_socket.is_linked:
-                        texture_node = self.get_input_node_of_type(input_socket, mapping["texture_type"])
+                        texture_node = get_input_node_of_type(input_socket, mapping["texture_type"])
                         if texture_node:
                             self._assign_texture_to_slot(slot_name, texture_node, b_mat.name)
 
@@ -156,6 +179,10 @@ class TextureCommon:
         srctex.use_mipmaps = 1
         srctex.alpha_format = 3
         srctex.unknown_byte = 1
+
+        srctex.format_prefs.pixel_layout = NifClasses.PixelLayout.LAY_DEFAULT
+        srctex.format_prefs.use_mipmaps = NifClasses.MipMapFormat.MIP_FMT_YES
+        srctex.format_prefs.alpha_format = NifClasses.AlphaFormat.ALPHA_DEFAULT
 
         # search for duplicate
         for block in block_store.block_to_obj:
@@ -241,7 +268,7 @@ class TextureCommon:
         return NifClasses.ApplyMode.APPLY_MODULATE
 
     def get_uv_node(self, b_texture_node):
-        uv_node = self.get_input_node_of_type(b_texture_node.inputs[0],
+        uv_node = get_input_node_of_type(b_texture_node.inputs[0],
                                               (bpy.types.ShaderNodeUVMap, bpy.types.ShaderNodeTexCoord))
         if uv_node is None:
             links = b_texture_node.inputs[0].links
@@ -282,7 +309,7 @@ class TextureCommon:
                 if slot_node is not None:
                     break
             if slot_node is not None:
-                combine_node = self.get_input_node_of_type(slot_node.inputs[0], bpy.types.ShaderNodeCombineXYZ)
+                combine_node = get_input_node_of_type(slot_node.inputs[0], bpy.types.ShaderNodeCombineXYZ)
                 NifLog.warn(f"Searching through vector input of {slot_name} texture gave {combine_node}")
 
         if combine_node:
@@ -309,6 +336,6 @@ class TextureCommon:
 
     def get_used_textslots(self, b_mat):
         used_slots = []
-        if b_mat is not None and b_mat.use_nodes:
+        if b_mat is not None:
             used_slots = [node for node in b_mat.node_tree.nodes if isinstance(node, bpy.types.ShaderNodeTexImage)]
         return used_slots
