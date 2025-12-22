@@ -1,0 +1,114 @@
+import bpy
+import math
+
+from io_scene_niftools.modules.nif_export.block_registry import block_store
+from nifgen.formats.nif import classes as NifClasses
+
+class Modifier:
+    def __init__(self):
+        self.target_game = bpy.context.scene.niftools_scene.game
+        self.fps = bpy.context.scene.render.fps
+
+    @staticmethod
+    def add_modifier(n_ni_particle_system, n_modifier):
+        num_props = n_ni_particle_system.num_modifiers
+        n_ni_particle_system.num_modifiers = num_props + 1
+
+        n_ni_particle_system.modifiers.append(n_modifier)
+
+    @staticmethod
+    def create_ni_p_sys_modifier(b_p_obj, ni_modifier_type, order, n_ni_particle_system):
+        ni_p_sys_modifier = block_store.create_block(ni_modifier_type)
+
+        ni_p_sys_modifier.name = f"{b_p_obj.name}-{ni_modifier_type}"
+        ni_p_sys_modifier.order = order
+        ni_p_sys_modifier.active = True
+        ni_p_sys_modifier.target = n_ni_particle_system
+
+        return ni_p_sys_modifier
+
+    def export_ni_p_sys_bound_update_modifier(self, b_p_obj, nif_particle_settings, n_ni_particle_system):
+        ni_p_sys_bound_update_modifier = self.create_ni_p_sys_modifier(b_p_obj, "NiPSysBoundUpdateModifier", NifClasses.NiPSysModifierOrder.ORDER_BOUND_UPDATE, n_ni_particle_system)
+
+        return ni_p_sys_bound_update_modifier
+    
+    def export_ni_p_sys_position_modifier(self, b_p_obj, nif_particle_settings, n_ni_particle_system):
+        ni_p_sys_position_modifier = self.create_ni_p_sys_modifier(b_p_obj, "NiPSysPositionModifier", NifClasses.NiPSysModifierOrder.ORDER_POS_UPDATE, n_ni_particle_system)
+
+        return ni_p_sys_position_modifier
+
+    def export_ni_p_sys_age_death_modifier(self, b_p_obj, nif_particle_settings, n_ni_particle_system, ni_p_sys_spawn_modifier):
+        ni_p_sys_age_death_modifier = self.create_ni_p_sys_modifier(b_p_obj, "NiPSysAgeDeathModifier", NifClasses.NiPSysModifierOrder.ORDER_KILLOLDPARTICLES, n_ni_particle_system)
+
+
+        ni_p_sys_age_death_modifier.spawn_modifier = ni_p_sys_spawn_modifier
+        ni_p_sys_age_death_modifier.spawn_on_death = nif_particle_settings.spawn_on_death
+
+        return ni_p_sys_age_death_modifier
+    
+    def export_ni_p_sys_spawn_modifier(self, b_p_obj, b_particle_system, n_ni_particle_system):
+        b_particle_system_settings = b_particle_system.settings
+
+        ni_p_sys_spawn_modifier = self.create_ni_p_sys_modifier(b_p_obj, "NiPSysSpawnModifier", NifClasses.NiPSysModifierOrder.ORDER_EMITTER, n_ni_particle_system)
+
+        ni_p_sys_spawn_modifier.num_spawn_generations = b_particle_system_settings.nif_particle_system.num_spawn_generations
+        ni_p_sys_spawn_modifier.percentage_spawned = b_particle_system_settings.nif_particle_system.percentage_spawned
+
+        ni_p_sys_spawn_modifier.min_num_to_spawn = b_particle_system_settings.nif_particle_system.min_num_to_spawn
+        ni_p_sys_spawn_modifier.max_num_to_spawn = b_particle_system_settings.nif_particle_system.max_num_to_spawn
+
+        ni_p_sys_spawn_modifier.spawn_speed_variation = math.ceil(b_particle_system_settings.factor_random)
+        ni_p_sys_spawn_modifier.spawn_dir_variation = math.ceil(b_particle_system_settings.rotation_factor_random)
+
+        ni_p_sys_spawn_modifier.life_span = b_particle_system_settings.lifetime / self.fps
+        ni_p_sys_spawn_modifier.life_span_variation = b_particle_system_settings.lifetime_random / self.fps
+
+        return ni_p_sys_spawn_modifier
+
+    def export_ni_p_sys_rotation_modifier(self, b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system):
+        b_particle_system_settings = b_particle_system.settings
+
+        ni_p_sys_rotation_modifier = self.create_ni_p_sys_modifier(b_p_obj, "NiPSysRotationModifier", NifClasses.NiPSysModifierOrder.ORDER_GENERAL, n_ni_particle_system)
+
+        ni_p_sys_rotation_modifier.rotation_speed = b_particle_system_settings.angular_velocity_factor
+        ni_p_sys_rotation_modifier.rotation_speed_variation
+
+        ni_p_sys_rotation_modifier.rotation_angle = math.radians(b_particle_system_settings.phase_factor * 180)
+
+        phase_factor_random = b_particle_system_settings.phase_factor_random
+
+        if phase_factor_random < 1:
+            ni_p_sys_rotation_modifier.rotation_angle_variation = math.radians(phase_factor_random * 180)
+        else:
+            ni_p_sys_rotation_modifier.rotation_angle_variation = math.radians((phase_factor_random - 1) * 180)
+
+        ni_p_sys_rotation_modifier.random_rot_speed_sign = nif_particle_settings.random_rot_speed_sign
+
+        ni_p_sys_rotation_modifier.random_axis = True if b_particle_system_settings.angular_velocity_mode == 'VELOCITY' else False
+
+        if b_particle_system_settings.rotation_mode.endswith("Y"):
+            ni_p_sys_rotation_modifier.axis = (0, 1 ,0)
+        elif b_particle_system_settings.rotation_mode.endswith("Z"):
+            ni_p_sys_rotation_modifier.axis = (0, 0 ,1)
+        else:
+            ni_p_sys_rotation_modifier.axis = (1, 0,0)
+        
+        return ni_p_sys_rotation_modifier
+    
+    def export_bs_parent_velocity_modifier(self, b_p_obj, b_particle_system, n_ni_particle_system):
+        b_particle_system_settings = b_particle_system.settings
+
+        bs_parent_velocity_modifier = self.create_ni_p_sys_modifier(b_p_obj, "BSParentVelocityModifier", NifClasses.NiPSysModifierOrder.ORDER_GENERAL, n_ni_particle_system)
+
+        bs_parent_velocity_modifier.damping = b_particle_system_settings.object_factor
+
+        return bs_parent_velocity_modifier
+    
+    def export_bs_wind_modifier(self, b_p_obj, b_particle_system, n_ni_particle_system):
+        b_particle_system_settings = b_particle_system.settings
+
+        bs_wind_modifier = self.create_ni_p_sys_modifier(b_p_obj, "BSWindModifier", NifClasses.NiPSysModifierOrder.ORDER_GENERAL, n_ni_particle_system)
+
+        bs_wind_modifier.strength = b_particle_system_settings.effector_weights.wind
+
+        return bs_wind_modifier
