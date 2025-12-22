@@ -185,8 +185,7 @@ class NodeWrapper:
 
     def clear_nodes(self):
         """Clear existing shader nodes from the node tree and restart with minimal setup."""
-
-        self.b_mat.use_nodes = True
+        
         self.b_shader_tree = self.b_mat.node_tree
 
         # Remove existing shader nodes
