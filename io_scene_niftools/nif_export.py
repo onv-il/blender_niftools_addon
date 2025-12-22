@@ -84,6 +84,7 @@ class NifExport(NifCommon):
         self.b_collision_objects = []
         self.b_constraint_objects = []
         self.b_particle_objects = []
+        self.b_force_field_objects = []
 
         # Common export properties
         self.target_game = None
@@ -133,7 +134,7 @@ class NifExport(NifCommon):
             # Export remaining block type categories
             self.collision_helper.export_collision(self.b_collision_objects)
             # self.constraint_helper.export_constraints(self.b_constraint_objects, n_root_node)
-            self.particle_helper.export_particles(self.b_particle_objects, n_root_node)
+            self.particle_helper.export_particles(self.b_particle_objects, self.b_force_field_objects, n_root_node)
             self.animation_helper.export_animations(self.b_main_objects, n_root_node)
 
             self.correct_scale(n_root_node)  # Correct scale for NIF units
@@ -189,6 +190,9 @@ class NifExport(NifCommon):
                     self.b_main_objects.remove(b_obj)
                 elif b_obj.particle_systems:
                     self.b_particle_objects.append(b_obj)
+                    self.b_main_objects.remove(b_obj)
+                elif b_obj.field:
+                    self.b_force_field_objects.append(b_obj)
                     self.b_main_objects.remove(b_obj)
 
     def __validate_object_data(self):
