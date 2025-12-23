@@ -72,29 +72,6 @@ def get_input_node_of_type(input_socket, node_types):
         else:
             # this has no inputs, and doesn't classify itself
             return None
-        
-def get_output_node_of_type(input_socket, node_types):
-    # search back in the node tree for nodes of a certain type(s), depth-first
-    links = input_socket.links
-    if not links:
-        # this socket has no inputs
-        return None
-    node = links[0].from_node
-    if isinstance(node, node_types):
-        # the input node is of the required type
-        return node
-    else:
-        if len(node.outputs) > 0:
-            for output in node.outputs:
-                # check every input if somewhere up that tree is a node of the required type
-                output_results = get_output_node_of_type(output, node_types)
-                if output_results:
-                    return output_results
-            # we found nothing
-            return None
-        else:
-            # this has no inputs, and doesn't classify itself
-            return None
 
 class TextureCommon:
     # Maps shader node input sockets to image texture nodes and NIF texture slots
