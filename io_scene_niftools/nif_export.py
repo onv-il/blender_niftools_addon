@@ -193,7 +193,6 @@ class NifExport(NifCommon):
                     self.b_main_objects.remove(b_obj)
                 elif b_obj.field:
                     self.b_force_field_objects.append(b_obj)
-                    self.b_main_objects.remove(b_obj)
 
     def __validate_object_data(self):
         """
