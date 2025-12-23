@@ -51,6 +51,11 @@ class ParticleSystemPanel(Panel):
     bl_region_type = 'WINDOW'
     bl_context = "particle"
 
+    external_object_emitters = [
+        "NiPSysMeshEmitter",
+        "BSPSysArrayEmitter"
+    ]
+
     @classmethod
     def poll(cls, context):
         if context.particle_settings:
@@ -67,8 +72,12 @@ class ParticleSystemPanel(Panel):
         box.prop(particle_setting, "particle_system_type")
         box.prop(particle_setting, "particle_emitter_type")
 
+        if particle_setting.particle_emitter_type in self.external_object_emitters:
+            box.prop(particle_setting, "particle_emitter_object")
+
         if particle_setting.particle_system_type == "BSStripParticleSystem":
             box.prop(particle_setting, "bs_strip_max_point_count")
+
 
         box.prop(particle_setting, "num_spawn_generations")
         box.prop(particle_setting, "percentage_spawned")
