@@ -1,6 +1,4 @@
 """Classes for exporting NIF particle blocks."""
-import bpy
-from io_scene_niftools import NifLog
 # ***** BEGIN LICENSE BLOCK *****
 #
 # Copyright © 2025 NIF File Format Library and Tools contributors.
@@ -41,6 +39,8 @@ from io_scene_niftools import NifLog
 import bpy
 import math
 
+import io_scene_niftools.modules.nif_export.particle.modifier as Modifier
+
 from nifgen.formats.nif import classes as NifClasses
 
 from io_scene_niftools.utils.logging import NifLog, NifError
@@ -48,7 +48,6 @@ from io_scene_niftools.utils.logging import NifLog, NifError
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 
 from io_scene_niftools.modules.nif_export.particle.emitter import Emitter
-from io_scene_niftools.modules.nif_export.particle.modifier import Modifier
 
 from io_scene_niftools.modules.nif_export.property.material import MaterialProperty
 from io_scene_niftools.modules.nif_export.property.object import ObjectProperty
@@ -71,7 +70,7 @@ class Particle:
         self.texture_property_helper = TextureProperty()
 
         self.emitter_helper = Emitter()
-        self.modifier_helper = Modifier()
+        self.modifier_helper = Modifier.Modifier()
 
     def export_particles(self, b_particle_objects, b_force_field_objects, n_root_node):
         """Export particle blocks."""
@@ -89,51 +88,83 @@ class Particle:
                 nif_particle_settings = b_particle_system_settings.nif_particle_system
                 b_material = b_p_obj.active_material
 
-                n_ni_particle_system = self.export_base_ni_particle_system(b_p_obj, b_particle_system, nif_particle_settings, b_material, n_parent_node)
+                n_ni_particle_system = self.export_base_ni_particle_system(b_p_obj, b_particle_system, nif_particle_settings, b_material, n_parent_node, n_root_node)
 
-                n_emitter = None
+                for b_force_field_object in b_force_field_objects:
+                    field_settings = b_force_field_object.field
 
-                if nif_particle_settings.particle_emitter_type == "NiPSysSphereEmitter":
-                    n_emitter = self.emitter_helper.export_ni_p_sys_sphere_emitter(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system)
-                elif nif_particle_settings.particle_emitter_type == "NiPSysBoxEmitter":
-                    n_emitter = self.emitter_helper.export_ni_p_sys_box_emitter(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system)
-                elif nif_particle_settings.particle_emitter_type == "NiPSysCylinderEmitter":
-                    n_emitter = self.emitter_helper.export_ni_p_sys_cylinder_emitter(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system)
-                elif nif_particle_settings.particle_emitter_type == "NiPSysMeshEmitter":
-                    n_emitter = self.emitter_helper.export_ni_p_sys_mesh_emitter(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system)
-                else:
-                    n_emitter = self.emitter_helper.export_bs_p_sys_array_emitter(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system)
-
-                self.modifier_helper.add_modifier(n_ni_particle_system, n_emitter)
-
+                    if field_settings.type == 'VORTEX':
+                        vortex_modifier = self.modifier_helper.export_ni_p_sys_vortex_field_modifier(b_force_field_object, b_particle_system, n_ni_particle_system)
+                        Modifier.add_modifier(n_ni_particle_system, vortex_modifier)
+                    elif field_settings.type == 'DRAG':
+                        drag_modifier = self.modifier_helper.export_ni_p_sys_drag_field_modifier(b_force_field_object, b_particle_system, n_ni_particle_system)
+                        Modifier.add_modifier(n_ni_particle_system, drag_modifier)
+                    elif field_settings.type == 'TURBULENCE':
+                        turbulence_modifier = self.modifier_helper.export_ni_p_sys_turbulence_field_modifier(b_force_field_object, b_particle_system, n_ni_particle_system)
+                        Modifier.add_modifier(n_ni_particle_system, turbulence_modifier)
+                    elif field_settings.type == 'WIND':
+                        air_modifier = self.modifier_helper.export_ni_p_sys_air_field_modifier(b_force_field_object, b_particle_system, n_ni_particle_system)
+                        Modifier.add_modifier(n_ni_particle_system, air_modifier)
+                    elif field_settings.type == 'FORCE':
+                        if field_settings.use_gravity_falloff and bpy.context.scene.use_gravity:
+                            gravity_modifier = self.modifier_helper.export_ni_p_sys_gravity_field_modifier(b_force_field_object, b_particle_system, n_ni_particle_system)
+                            Modifier.add_modifier(n_ni_particle_system, gravity_modifier)
+                        
                 if b_particle_system_settings.use_rotations:
                     ni_p_sys_rotation_modifier = self.modifier_helper.export_ni_p_sys_rotation_modifier(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system)
-                    self.modifier_helper.add_modifier(n_ni_particle_system, ni_p_sys_rotation_modifier)
+                    Modifier.add_modifier(n_ni_particle_system, ni_p_sys_rotation_modifier)
 
                 if b_particle_system_settings.object_factor != 0:
                     bs_parent_velocity_modifier = self.modifier_helper.export_bs_parent_velocity_modifier(b_p_obj, b_particle_system, n_ni_particle_system)
-                    self.modifier_helper.add_modifier(n_ni_particle_system, bs_parent_velocity_modifier)
+                    Modifier.add_modifier(n_ni_particle_system, bs_parent_velocity_modifier)
 
                 if b_particle_system_settings.effector_weights.wind != 0:
                     bs_wind_modifier = self.modifier_helper.export_bs_wind_modifier(b_p_obj, b_particle_system, n_ni_particle_system)
-                    self.modifier_helper.add_modifier(n_ni_particle_system, bs_wind_modifier)
-
-                # self.export_ni_p_sys_data(b_p_obj, b_particle_system, n_ni_particle_system)
+                    Modifier.add_modifier(n_ni_particle_system, bs_wind_modifier)
 
     # export a particle system with the bare minimum functionality
-    def export_base_ni_particle_system(self, b_p_obj, b_particle_system, nif_particle_settings, b_material, n_parent_node):
+    def export_base_ni_particle_system(self, b_p_obj, b_particle_system, nif_particle_settings, b_material, n_parent_node, n_root_node):
         n_ni_particle_system = block_store.create_block(nif_particle_settings.particle_system_type, b_p_obj)
         n_ni_particle_system.flags = b_p_obj.nif_object.flags
         n_ni_particle_system.name = b_p_obj.name
+
+        n_emitter = None
+
+        if nif_particle_settings.particle_emitter_type == "NiPSysSphereEmitter":
+            n_emitter = self.emitter_helper.export_ni_p_sys_sphere_emitter(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system)
+        elif nif_particle_settings.particle_emitter_type == "NiPSysBoxEmitter":
+            n_emitter = self.emitter_helper.export_ni_p_sys_box_emitter(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system)
+        elif nif_particle_settings.particle_emitter_type == "NiPSysCylinderEmitter":
+            n_emitter = self.emitter_helper.export_ni_p_sys_cylinder_emitter(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system)
+        elif nif_particle_settings.particle_emitter_type == "NiPSysMeshEmitter":
+            n_emitter = self.emitter_helper.export_ni_p_sys_mesh_emitter(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system, n_root_node)
+        else:
+            n_emitter = self.emitter_helper.export_bs_p_sys_array_emitter(b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system)
         
         ni_p_sys_data = self.export_ni_p_sys_data(b_p_obj, b_material, b_particle_system, n_ni_particle_system)
 
-        ni_p_sys_update_ctlr = block_store.create_block("NiPSysUpdateCtlr")
-        ni_p_sys_update_ctlr.target = n_ni_particle_system
-        ni_p_sys_update_ctlr.start_time = 0
-        ni_p_sys_update_ctlr.end_time = 0
+        ni_p_sys_emitter_ctlr = block_store.create_block("NiPSysEmitterCtlr")
+        ni_p_sys_emitter_ctlr.modifier_name = n_emitter.name
 
-        n_ni_particle_system.controller = ni_p_sys_update_ctlr
+        ni_float_interpolator = block_store.create_block("NiFloatInterpolator")
+        ni_bool_interpolator = block_store.create_block("NiBoolInterpolator")
+
+        ni_p_sys_emitter_ctlr.interpolator = ni_float_interpolator
+        ni_p_sys_emitter_ctlr.visibility_interpolator = ni_bool_interpolator
+
+        ni_p_sys_emitter_ctlr.start_time = 0
+        ni_p_sys_emitter_ctlr.stop_time = 0
+
+        ni_p_sys_update_ctlr = block_store.create_block("NiPSysUpdateCtlr")
+        ni_p_sys_update_ctlr.start_time = 0
+        ni_p_sys_update_ctlr.stop_time = 0
+
+        n_ni_particle_system.add_controller(ni_p_sys_emitter_ctlr)
+        n_ni_particle_system.add_controller(ni_p_sys_update_ctlr)
+
+        if isinstance(n_ni_particle_system, NifClasses.BSStripParticleSystem):
+            n_strip_update_modifier = self.modifier_helper.export_bs_p_sys_strip_update_modifier(b_p_obj, nif_particle_settings, n_ni_particle_system)
+            Modifier.add_modifier(n_ni_particle_system, n_strip_update_modifier)
 
         self.object_property_helper.export_alpha_property(b_material, n_ni_particle_system)
         self.material_property_helper.export_ni_material_property(b_material, n_ni_particle_system)
@@ -144,10 +175,11 @@ class Particle:
         ni_p_sys_spawn_modifier = self.modifier_helper.export_ni_p_sys_spawn_modifier(b_p_obj, b_particle_system, n_ni_particle_system)
         ni_p_sys_age_death_modifier = self.modifier_helper.export_ni_p_sys_age_death_modifier(b_p_obj, nif_particle_settings, n_ni_particle_system, ni_p_sys_spawn_modifier)
 
-        self.modifier_helper.add_modifier(n_ni_particle_system, ni_p_sys_position_modifier)
-        self.modifier_helper.add_modifier(n_ni_particle_system, ni_p_sys_bound_update_modifier)
-        self.modifier_helper.add_modifier(n_ni_particle_system, ni_p_sys_spawn_modifier)
-        self.modifier_helper.add_modifier(n_ni_particle_system, ni_p_sys_age_death_modifier)
+        Modifier.add_modifier(n_ni_particle_system, n_emitter)
+        Modifier.add_modifier(n_ni_particle_system, ni_p_sys_position_modifier)
+        Modifier.add_modifier(n_ni_particle_system, ni_p_sys_bound_update_modifier)
+        Modifier.add_modifier(n_ni_particle_system, ni_p_sys_spawn_modifier)
+        Modifier.add_modifier(n_ni_particle_system, ni_p_sys_age_death_modifier)
 
         n_parent_node.add_child(n_ni_particle_system)
 
