@@ -88,10 +88,10 @@ class MaterialAnimation(AnimationCommon):
         emission_strength_fcurves = [fcu for fcu in action_fcurves if "emission_strength" in fcu.data_path or "inputs[28]" in fcu.data_path]
 
         for fcus, num_fcus in ((ambient_color_fcurves, 3), (diffuse_color_fcurves, 3), (emission_color_fcurves, 3), (specular_color_fcurves, 3)):
-            if fcus and len(fcus) != num_fcus:
+            if fcus and len(fcus) < num_fcus:
                 raise NifError(
                     f"Incomplete color key set for action {b_action.name}."
-                    f"Ensure that if a color is keyframed for a property, the alpha channel is not keyframed.")
+                    f"Ensure that if a color is keyframed for a property, all three color channels are keyframed")
 
         #TODO: enable export for ambient, diffuse, and specular animation
 
@@ -103,16 +103,16 @@ class MaterialAnimation(AnimationCommon):
         alpha_curves = []
         emission_strength_curves = []
 
-        for frame, ambient in self.iter_frame_key(ambient_color_fcurves, mathutils.Color):
+        for frame, ambient in self.iter_frame_key(ambient_color_fcurves[0:3], mathutils.Color):
             ambient_curves.append((frame, ambient.from_scene_linear_to_srgb()))
 
-        for frame, diffuse in self.iter_frame_key(diffuse_color_fcurves, mathutils.Color):
+        for frame, diffuse in self.iter_frame_key(diffuse_color_fcurves[0:3], mathutils.Color):
             diffuse_curves.append((frame, diffuse.from_scene_linear_to_srgb()))
 
-        for frame, emission_color in self.iter_frame_key(emission_color_fcurves, mathutils.Color):
+        for frame, emission_color in self.iter_frame_key(emission_color_fcurves[0:3], mathutils.Color):
             emission_color_curves.append((frame, emission_color.from_scene_linear_to_srgb()))
 
-        for frame, specular in self.iter_frame_key(specular_color_fcurves, mathutils.Color):
+        for frame, specular in self.iter_frame_key(specular_color_fcurves[0:3], mathutils.Color):
             specular_curves.append((frame, specular.from_scene_linear_to_srgb()))
 
         for fcurve in alpha_fcurves:
