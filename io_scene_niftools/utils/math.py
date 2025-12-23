@@ -273,7 +273,7 @@ def color_blender_to_nif(n_color, b_color):
     n_color.b = b_color[2]
 
     if hasattr(n_color, 'a') and len(b_color) == 4:
-        n_color.b = b_color[3]
+        n_color.a = b_color[3]
 
 def color_nif_to_blender(n_color, b_color):
     """Set Blender RGB/RGBA value from NIF color3/color4 value."""
