@@ -42,6 +42,8 @@ from abc import ABC
 
 import bpy
 
+from io_scene_niftools.utils import consts
+
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.utils.logging import NifLog, NifError
 from io_scene_niftools.utils.singleton import NifOp, NifData
@@ -87,6 +89,122 @@ def export_text_keys(fps, b_action, n_text_extra):
             NifLog.warn(f"Marker out of animated range ({f} not between [{f0}, {f1}])")
         key.time = f / fps
         key.value = marker.name.replace('/', '\r\n')
+
+def add_dummy_controllers(b_armature):
+    NifLog.info("Adding controllers and interpolators for skeleton")
+    # note: block_store.block_to_obj changes during iteration, so need list copy
+
+    n_skeleton_root = None
+
+    for n_block in list(block_store.block_to_obj.keys()):
+        if isinstance(n_block, NifClasses.NiNode) and n_block.name == "Bip01":
+            n_skeleton_root = n_block
+
+    if n_skeleton_root is None:
+        raise NifError(f"{b_armature.name} needs a Bip01 root node!")
+
+    for n_bone in n_skeleton_root.tree(block_type=NifClasses.NiNode):
+        n_kfc = block_store.create_block("NiTransformController", None)
+        n_bone.add_controller(n_kfc)
+
+        if n_bone.name == "Bip01 NonAccum" and not isinstance(n_bone, NifClasses.NiControllerSequence):
+            bhkBlendController = block_store.create_block("bhkBlendController", None)
+            bhkBlendController.target = n_bone
+            n_kfc.next_controller = bhkBlendController
+        else:
+            n_kfi = block_store.create_block("NiTransformInterpolator", None)
+            n_kfi.target = n_bone
+
+            n_kfi.scale, n_kfi.rotation, n_kfi.translation = n_bone.get_transform().get_scale_quat_translation()
+
+            n_kfc.interpolator = n_kfi
+
+        # todo [anim] use self.nif_export.animationhelper.set_flags_and_timing
+        n_kfc.flags = 12
+        n_kfc.frequency = 1.0
+        n_kfc.phase = 0.0
+        n_kfc.start_time = consts.FLOAT_MAX
+        n_kfc.stop_time = consts.FLOAT_MIN
+
+def create_controller(parent_block, target_name, priority=0):
+    # todo[anim] - make independent of global NifData.data.version, and move check for NifOp.props.animation outside
+    n_kfi = None
+    n_kfc = None
+
+    try:
+        if NifOp.props.animation == 'GEOM_NIF' and NifData.data.version < 0x0A020000:
+            # keyframe controllers are not present in geometry only files
+            # for more recent versions, the controller and interpolators are
+            # present, only the data is not present (see further on)
+            return n_kfc, n_kfi
+    except AttributeError:
+        # kf export has no animation mode
+        pass
+
+    # add a KeyframeController block, and refer to this block in the
+    # parent's time controller
+    if NifData.data.version < 0x0A020000:
+        n_kfc = block_store.create_block("NiKeyframeController", None)
+    else:
+        n_kfc = block_store.create_block("NiTransformController", None)
+
+        if target_name == "Bip01 NonAccum" and not isinstance(parent_block, NifClasses.NiControllerSequence):
+            bhkBlendController = block_store.create_block("bhkBlendController", None)
+            bhkBlendController.target = parent_block
+            n_kfc.next_controller = bhkBlendController
+        else:
+            n_kfi = block_store.create_block("NiTransformInterpolator", None)
+
+        # link interpolator from the controller
+        n_kfc.interpolator = n_kfi
+    # if parent is a node, attach controller to that node
+    if isinstance(parent_block, NifClasses.NiNode):
+        parent_block.add_controller(n_kfc)
+        if n_kfi:
+            # set interpolator default data
+            n_kfi.scale, n_kfi.rotation, n_kfi.translation = parent_block.get_transform().get_scale_quat_translation()
+
+    # else ControllerSequence, so create a link
+    elif isinstance(parent_block, NifClasses.NiControllerSequence):
+        controlled_block = parent_block.add_controlled_block()
+        controlled_block.priority = priority
+        # todo - pyffi adds the names to the NiStringPalette, but it creates one per controller link...
+        # also the currently used pyffi version doesn't store target_name for ZT2 style KFs in
+        # controlled_block.set_node_name(target_name)
+        # the following code handles both issues and should probably be ported to pyffi
+        if NifData.data.version < 0x0A020000:
+            # older versions need the actual controller blocks
+            controlled_block.target_name = target_name
+            controlled_block.controller = n_kfc
+            # erase reference to target node
+            n_kfc.target = None
+        else:
+            # newer versions need the interpolator blocks
+            controlled_block.interpolator = n_kfi
+            controlled_block.node_name = target_name
+            controlled_block.controller_type = "NiTransformController"
+            # get the parent's string palette
+            if not parent_block.string_palette:
+                parent_block.string_palette = NifClasses.NiStringPalette(NifData.data)
+            # assign string palette to controller
+            controlled_block.string_palette = parent_block.string_palette
+            # add the strings and store their offsets
+            palette = controlled_block.string_palette.palette
+            controlled_block.node_name_offset = palette.add_string(controlled_block.node_name)
+            controlled_block.controller_type_offset = palette.add_string(controlled_block.controller_type)
+    # morrowind style
+    elif isinstance(parent_block, NifClasses.NiSequenceStreamHelper):
+        # create node reference by name
+        nodename_extra = block_store.create_block("NiStringExtraData")
+        nodename_extra.bytes_remaining = len(target_name) + 4
+        nodename_extra.string_data = target_name
+        # the controllers and extra datas form a chain down from the kf root
+        parent_block.add_extra_data(nodename_extra)
+        parent_block.add_controller(n_kfc)
+    else:
+        raise NifError(f"Unsupported KeyframeController parent!")
+
+    return n_kfc, n_kfi
 
 class AnimationCommon(ABC):
 
@@ -153,87 +271,6 @@ class AnimationCommon(ABC):
                     node_kfctrls[node] = []
                 node_kfctrls[node].append(ctrl)
         return node_kfctrls
-
-
-    def create_controller(self, parent_block, target_name, priority=0):
-        # todo[anim] - make independent of global NifData.data.version, and move check for NifOp.props.animation outside
-        n_kfi = None
-        n_kfc = None
-
-        try:
-            if NifOp.props.animation == 'GEOM_NIF' and NifData.data.version < 0x0A020000:
-                # keyframe controllers are not present in geometry only files
-                # for more recent versions, the controller and interpolators are
-                # present, only the data is not present (see further on)
-                return n_kfc, n_kfi
-        except AttributeError:
-            # kf export has no animation mode
-            pass
-
-        # add a KeyframeController block, and refer to this block in the
-        # parent's time controller
-        if NifData.data.version < 0x0A020000:
-            n_kfc = block_store.create_block("NiKeyframeController", None)
-        else:
-            n_kfc = block_store.create_block("NiTransformController", None)
-
-            if target_name == "Bip01 NonAccum" and not isinstance(parent_block, NifClasses.NiControllerSequence):
-                bhkBlendController = block_store.create_block("bhkBlendController", None)
-                bhkBlendController.target = parent_block
-                n_kfc.next_controller = bhkBlendController
-            else:
-                n_kfi = block_store.create_block("NiTransformInterpolator", None)
-
-            # link interpolator from the controller
-            n_kfc.interpolator = n_kfi
-        # if parent is a node, attach controller to that node
-        if isinstance(parent_block, NifClasses.NiNode):
-            parent_block.add_controller(n_kfc)
-            if n_kfi:
-                # set interpolator default data
-                n_kfi.scale, n_kfi.rotation, n_kfi.translation = parent_block.get_transform().get_scale_quat_translation()
-
-        # else ControllerSequence, so create a link
-        elif isinstance(parent_block, NifClasses.NiControllerSequence):
-            controlled_block = parent_block.add_controlled_block()
-            controlled_block.priority = priority
-            # todo - pyffi adds the names to the NiStringPalette, but it creates one per controller link...
-            # also the currently used pyffi version doesn't store target_name for ZT2 style KFs in
-            # controlled_block.set_node_name(target_name)
-            # the following code handles both issues and should probably be ported to pyffi
-            if NifData.data.version < 0x0A020000:
-                # older versions need the actual controller blocks
-                controlled_block.target_name = target_name
-                controlled_block.controller = n_kfc
-                # erase reference to target node
-                n_kfc.target = None
-            else:
-                # newer versions need the interpolator blocks
-                controlled_block.interpolator = n_kfi
-                controlled_block.node_name = target_name
-                controlled_block.controller_type = "NiTransformController"
-                # get the parent's string palette
-                if not parent_block.string_palette:
-                    parent_block.string_palette = NifClasses.NiStringPalette(NifData.data)
-                # assign string palette to controller
-                controlled_block.string_palette = parent_block.string_palette
-                # add the strings and store their offsets
-                palette = controlled_block.string_palette.palette
-                controlled_block.node_name_offset = palette.add_string(controlled_block.node_name)
-                controlled_block.controller_type_offset = palette.add_string(controlled_block.controller_type)
-        # morrowind style
-        elif isinstance(parent_block, NifClasses.NiSequenceStreamHelper):
-            # create node reference by name
-            nodename_extra = block_store.create_block("NiStringExtraData")
-            nodename_extra.bytes_remaining = len(target_name) + 4
-            nodename_extra.string_data = target_name
-            # the controllers and extra datas form a chain down from the kf root
-            parent_block.add_extra_data(nodename_extra)
-            parent_block.add_controller(n_kfc)
-        else:
-            raise NifError(f"Unsupported KeyframeController parent!")
-
-        return n_kfc, n_kfi
 
     # todo [anim] currently not used, maybe reimplement this
     @staticmethod
