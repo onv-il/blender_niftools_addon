@@ -160,6 +160,13 @@ class ObjectProperty(PropertyGroup):
         default='NiNode',
     )
 
+    billboard_mode: EnumProperty(
+        name='Billboard Mode',
+        description='The behavior of the billboard node.',
+        items=[(member.name, member.name, "", i) for i, member in enumerate(NifClasses.BillboardMode)],
+        default='ALWAYS_FACE_CAMERA',
+    )
+
     prn_location: StringProperty(
         name='PRN',
         description='Attachment point of weapon, armor, or body part. For FO3, Oblivion, and Skyrim'
