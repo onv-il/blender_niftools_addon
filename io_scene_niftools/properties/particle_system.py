@@ -39,7 +39,7 @@
 
 import bpy
 
-from bpy.props import (EnumProperty, FloatProperty, IntProperty, BoolProperty)
+from bpy.props import (EnumProperty, FloatProperty, IntProperty, BoolProperty, PointerProperty)
 from bpy.types import PropertyGroup
 
 from io_scene_niftools.utils.decorators import register_classes, unregister_classes
@@ -64,6 +64,12 @@ class ParticleSystemProperty(PropertyGroup):
                ("NiPSysMeshEmitter", "NiPSysMeshEmitter", "Randomly spawns particles from a specifiable parts of the parent mesh.", 3), 
                ("BSPSysArrayEmitter", "BSPSysArrayEmitter", "Evenly spawns particles across a NiNode and its children Nodes recursively.\nRandomizes the position, rotation, and scale of each NiNode when each particle is spawned.", 4)],
         default = 'NiPSysSphereEmitter'
+    )
+
+    particle_emitter_object: PointerProperty(
+        name='Particle Emitter Object',
+        description='Object used for mesh and array emitters.',
+        type = bpy.types.Object,
     )
 
     bs_strip_max_point_count: IntProperty(
