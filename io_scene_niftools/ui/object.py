@@ -70,6 +70,10 @@ class ObjectPanel(ObjectButtonsPanel):
         row = layout.column()
         if b_obj.type == "EMPTY":
             row.prop(nif_obj_props, "nodetype")
+
+            if nif_obj_props.nodetype == 'NiBillboardNode':
+                row.prop(nif_obj_props, "billboard_mode")
+
             row.prop(nif_obj_props, "upb")
         if self.is_root_object(b_obj):
             if b_obj.type != "ARMATURE":
