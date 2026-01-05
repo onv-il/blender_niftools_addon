@@ -40,6 +40,8 @@
 
 import bpy
 
+from io_scene_niftools.utils.math import find_controller
+
 from io_scene_niftools.modules.nif_export.animation.common import create_text_keys, export_text_keys
 
 from io_scene_niftools.modules.nif_export.object import DICT_NAMES
@@ -56,6 +58,22 @@ from io_scene_niftools.modules.nif_export.animation.common import create_text_ke
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.utils.logging import NifLog
 from nifgen.formats.nif import classes as NifClasses
+
+def sort_animation_data(b_objects):
+    b_sequences = {}
+
+    for b_obj in b_objects:
+        if b_obj.animation_data:
+            # NifLog.info(f"{b_obj.animation_data}")
+
+            for b_nla_track in b_obj.animation_data.nla_tracks:
+                if b_nla_track.name not in b_sequences:
+                    b_sequences[b_nla_track.name] = []
+
+                b_sequence_data = (b_nla_track.strips[0], b_obj)
+                b_sequences[b_nla_track.name].append(b_sequence_data)
+
+    return b_sequences
 
 
 class Animation:
@@ -88,20 +106,7 @@ class Animation:
 
         # TODO: Support multiple strips per track?
 
-        b_sequences = {}
-
-        for b_obj in b_objects:
-
-            if b_obj.animation_data:
-
-                NifLog.info(f"{b_obj.animation_data}")
-
-                for b_nla_track in b_obj.animation_data.nla_tracks:
-                    if b_nla_track.name not in b_sequences:
-                        b_sequences[b_nla_track.name] = []
-
-                    b_sequence_data = (b_nla_track.strips[0], b_obj)
-                    b_sequences[b_nla_track.name].append(b_sequence_data)
+        b_sequences = sort_animation_data(b_objects)
 
         # Export the NiControllerManager
         self.export_ni_controller_manager(n_root_node, b_sequences)
@@ -120,48 +125,22 @@ class Animation:
 
         for n_sequence_name, b_controlled_blocks in b_sequences.items():
             # Create a NiControllerSequence for each Blender quasi sequence
-            n_ni_controller_sequence = self.export_ni_controller_sequence(n_sequence_name, b_controlled_blocks,
-                                                                          n_root_node.name, n_ni_controller_manager)
-            # TODO: Move to object animation class
+            n_ni_controller_sequence = self.export_ni_controller_sequence(n_sequence_name, b_controlled_blocks, n_root_node, n_ni_controller_manager)
+            
             for n_controlled_block in n_ni_controller_sequence.controlled_blocks:
-                n_obj = DICT_NAMES[n_controlled_block.node_name]
+                n_obj = next((block for block in block_store.block_to_obj.keys() if block.name == n_controlled_block.node_name), None)
 
-                n_controlled_block_tuple = (n_controlled_block, n_obj)
-
-                if not n_controlled_block_tuple in n_ni_av_controlled_blocks:
-                    n_ni_av_controlled_blocks.append(n_controlled_block_tuple)
+                if n_obj not in n_ni_av_controlled_blocks:
+                    n_ni_av_controlled_blocks.append(n_obj)
 
         n_ni_default_av_object_palette.num_objs = len(n_ni_av_controlled_blocks)
         n_ni_default_av_object_palette.reset_field("objs")
 
-        for n_palette_obj, (_, n_obj) in zip(n_ni_default_av_object_palette.objs, n_ni_av_controlled_blocks):
+        for n_palette_obj, n_obj in zip(n_ni_default_av_object_palette.objs, n_ni_av_controlled_blocks):
             n_palette_obj.av_object = n_obj
             n_palette_obj.name = n_obj.name
 
-        transform_blocks = [(n_controlled_block, n_obj) for (n_controlled_block, n_obj) in n_ni_av_controlled_blocks if isinstance(n_controlled_block.controller, NifClasses.NiTransformController)]
-
-
-        NifLog.info(f"{transform_blocks}")
-
-        if transform_blocks:
-            n_ni_multi_target_transform_controller = block_store.create_block("NiMultiTargetTransformController")
-
-            n_ni_multi_target_transform_controller.target = n_root_node
-
-            for (n_controlled_block, n_obj) in transform_blocks:
-                if n_obj in n_ni_multi_target_transform_controller.extra_targets:
-                    continue
-
-                n_ni_multi_target_transform_controller.num_extra_targets += 1
-                n_ni_multi_target_transform_controller.extra_targets.append(n_obj)
-
-                n_controlled_block.controller.interpolator = None
-
-                n_controlled_block.controller = n_ni_multi_target_transform_controller
-
-            n_ni_controller_manager.next_controller = n_ni_multi_target_transform_controller
-
-    def export_ni_controller_sequence(self, n_sequence_name, b_controlled_blocks, n_accum_root_name,
+    def export_ni_controller_sequence(self, n_sequence_name, b_controlled_blocks, root_node,
                                       n_ni_controller_manager=None):
         """
         Export a NiControllerSequence block.
@@ -171,7 +150,7 @@ class Animation:
 
         # Create a NiControllerSequence block and set its trivial properties
         n_ni_controller_sequence = block_store.create_block("NiControllerSequence")
-        n_ni_controller_sequence.accum_root_name = n_accum_root_name
+        n_ni_controller_sequence.accum_root_name = root_node.name
         n_ni_controller_sequence.name = n_sequence_name
         n_ni_controller_sequence.array_grow_by = 1
 
@@ -211,8 +190,8 @@ class Animation:
         # self.geometry_animation_helper.export_geometry_animations(n_ni_controller_sequence, b_controlled_blocks)
         self.material_animation_helper.export_material_animations(b_controlled_blocks, n_ni_controller_sequence)
         self.object_animation_helper.export_object_animations(b_controlled_blocks, n_ni_controller_sequence)
-        # self.particle_animation_helper.export_particle_animations(n_ni_controller_sequence, b_controlled_blocks)
-        # self.shader_animation_helper.export_shader_animations(n_ni_controller_sequence, b_controlled_blocks)
+        self.particle_animation_helper.export_particle_animations(b_controlled_blocks, n_ni_controller_sequence)
+        self.shader_animation_helper.export_shader_animations(b_controlled_blocks, n_ni_controller_sequence)
         self.texture_animation_helper.export_texture_animations(b_controlled_blocks, n_ni_controller_sequence)
 
     def export_text_keys(self, n_ni_controller_sequence, b_controlled_blocks):
