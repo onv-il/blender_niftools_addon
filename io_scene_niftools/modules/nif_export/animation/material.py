@@ -39,6 +39,8 @@
 
 import mathutils
 
+from io_scene_niftools.utils import consts
+
 from io_scene_niftools.modules.nif_export.animation.common import AnimationCommon
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.modules.nif_export.object import DICT_NAMES
@@ -57,6 +59,9 @@ class MaterialAnimation(AnimationCommon):
         for b_controlled_block in b_controlled_blocks:
             b_strip, b_obj = b_controlled_block
             b_action = b_strip.action
+
+            if b_obj.particle_systems:
+                continue
 
             n_ni_geometry = DICT_NAMES[b_obj.name]
             n_mat_prop = next(
@@ -88,10 +93,10 @@ class MaterialAnimation(AnimationCommon):
         emission_strength_fcurves = [fcu for fcu in action_fcurves if "emission_strength" in fcu.data_path or "inputs[28]" in fcu.data_path]
 
         for fcus, num_fcus in ((ambient_color_fcurves, 3), (diffuse_color_fcurves, 3), (emission_color_fcurves, 3), (specular_color_fcurves, 3)):
-            if fcus and len(fcus) < num_fcus:
+            if fcus and len(fcus) != num_fcus:
                 raise NifError(
                     f"Incomplete color key set for action {b_action.name}."
-                    f"Ensure that if a color is keyframed for a property, all three color channels are keyframed")
+                    f"Ensure that if a color is keyframed for a property, the alpha channel is not keyframed.")
 
         #TODO: enable export for ambient, diffuse, and specular animation
 
@@ -103,16 +108,16 @@ class MaterialAnimation(AnimationCommon):
         alpha_curves = []
         emission_strength_curves = []
 
-        for frame, ambient in self.iter_frame_key(ambient_color_fcurves[0:3], mathutils.Color):
+        for frame, ambient in self.iter_frame_key(ambient_color_fcurves, mathutils.Color):
             ambient_curves.append((frame, ambient.from_scene_linear_to_srgb()))
 
-        for frame, diffuse in self.iter_frame_key(diffuse_color_fcurves[0:3], mathutils.Color):
+        for frame, diffuse in self.iter_frame_key(diffuse_color_fcurves, mathutils.Color):
             diffuse_curves.append((frame, diffuse.from_scene_linear_to_srgb()))
 
-        for frame, emission_color in self.iter_frame_key(emission_color_fcurves[0:3], mathutils.Color):
+        for frame, emission_color in self.iter_frame_key(emission_color_fcurves, mathutils.Color):
             emission_color_curves.append((frame, emission_color.from_scene_linear_to_srgb()))
 
-        for frame, specular in self.iter_frame_key(specular_color_fcurves[0:3], mathutils.Color):
+        for frame, specular in self.iter_frame_key(specular_color_fcurves, mathutils.Color):
             specular_curves.append((frame, specular.from_scene_linear_to_srgb()))
 
         for fcurve in alpha_fcurves:
@@ -125,15 +130,15 @@ class MaterialAnimation(AnimationCommon):
 
 
         if emission_color_curves:
-            self.export_emissive_color_controller(emission_color_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence)
+            self.export_emissive_color_controller(emission_color_curves, action_fcurves, b_action, n_ni_geometry, n_mat_prop, n_ni_controller_sequence)
 
         if alpha_curves:
-            self.export_alpha_controller(alpha_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence)
+            self.export_alpha_controller(alpha_curves, action_fcurves, b_action, n_ni_geometry, n_mat_prop, n_ni_controller_sequence)
 
         if emission_strength_curves:
-            self.export_emissive_strength_controller(emission_strength_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence)
+            self.export_emissive_strength_controller(emission_strength_curves, action_fcurves, b_action, n_ni_geometry, n_mat_prop, n_ni_controller_sequence)
 
-    def export_emissive_color_controller(self, emission_color_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence=None):
+    def export_emissive_color_controller(self, emission_color_curves, action_fcurves, b_action, n_ni_geometry, n_mat_prop, n_ni_controller_sequence=None):
         # create the key data
         n_key_data = block_store.create_block("NiPosData")
         n_key_data.data.num_keys = len(emission_color_curves)
@@ -150,7 +155,7 @@ class MaterialAnimation(AnimationCommon):
         n_mat_ipol = block_store.create_block("NiPoint3Interpolator")
         n_mat_ctrl.interpolator = n_mat_ipol
 
-        self.set_flags_and_timing(n_mat_ctrl, action_fcurves)
+        self.set_flags_and_timing(n_mat_ctrl, action_fcurves, *b_action.frame_range)
 
         # set target color only for color controller
         n_mat_ctrl.set_target_color(NifClasses.MaterialColor.TC_SELF_ILLUM)
@@ -160,16 +165,26 @@ class MaterialAnimation(AnimationCommon):
         n_mat_prop.add_controller(n_mat_ctrl)
 
         if n_ni_controller_sequence:
+            n_ni_blend_point3_interpolator = block_store.create_block("NiBlendPoint3Interpolator")
+
+            n_ni_blend_point3_interpolator.array_size = 2
+            n_ni_blend_point3_interpolator.reset_field("interp_array_items")
+
+            n_ni_blend_point3_interpolator.value = consts.FLOAT_MIN
+            n_ni_blend_point3_interpolator.flags.manager_controlled = True
+
             n_controlled_block = n_ni_controller_sequence.add_controlled_block()
             n_controlled_block.controller = n_mat_ctrl
             n_controlled_block.interpolator = n_mat_ipol
+
+            n_mat_ctrl.interpolator = n_ni_blend_point3_interpolator
             
             n_controlled_block.node_name = n_ni_geometry.name
             n_controlled_block.property_type = "NiMaterialProperty"
             n_controlled_block.controller_type = "NiMaterialColorController"
             n_controlled_block.controller_id = "TC_SELF_ILLUM"
 
-    def export_alpha_controller(self, alpha_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence=None):
+    def export_alpha_controller(self, alpha_curves, action_fcurves, b_action, n_ni_geometry, n_mat_prop, n_ni_controller_sequence=None):
         # create the key data
         n_key_data = block_store.create_block("NiFloatData")
         n_key_data.data.num_keys = len(alpha_curves)
@@ -184,7 +199,7 @@ class MaterialAnimation(AnimationCommon):
         n_mat_ipol = block_store.create_block("NiFloatInterpolator")
         n_mat_ctrl.interpolator = n_mat_ipol
 
-        self.set_flags_and_timing(n_mat_ctrl, action_fcurves)
+        self.set_flags_and_timing(n_mat_ctrl, action_fcurves, *b_action.frame_range)
 
         n_mat_ipol.data = n_key_data
 
@@ -192,15 +207,25 @@ class MaterialAnimation(AnimationCommon):
         n_mat_prop.add_controller(n_mat_ctrl)
 
         if n_ni_controller_sequence:
+            n_ni_blend_float_interpolator = block_store.create_block("NiBlendFloatInterpolator")
+
+            n_ni_blend_float_interpolator.array_size = 2
+            n_ni_blend_float_interpolator.reset_field("interp_array_items")
+
+            n_ni_blend_float_interpolator.value = consts.FLOAT_MIN
+            n_ni_blend_float_interpolator.flags.manager_controlled = True
+
             n_controlled_block = n_ni_controller_sequence.add_controlled_block()
             n_controlled_block.controller = n_mat_ctrl
             n_controlled_block.interpolator = n_mat_ipol
+
+            n_mat_ctrl.interpolator = n_ni_blend_float_interpolator
             
             n_controlled_block.node_name = n_ni_geometry.name
             n_controlled_block.property_type = "NiMaterialProperty"
             n_controlled_block.controller_type = "NiAlphaController"
 
-    def export_emissive_strength_controller(self, emission_strength_curves, action_fcurves, n_ni_geometry, n_mat_prop, n_ni_controller_sequence=None):
+    def export_emissive_strength_controller(self, emission_strength_curves, action_fcurves, b_action, n_ni_geometry, n_mat_prop, n_ni_controller_sequence=None):
         # create the key data
         n_key_data = block_store.create_block("NiFloatData")
         n_key_data.data.num_keys = len(emission_strength_curves)
@@ -215,7 +240,7 @@ class MaterialAnimation(AnimationCommon):
         n_mat_ipol = block_store.create_block("NiFloatInterpolator")
         n_mat_ctrl.interpolator = n_mat_ipol
 
-        self.set_flags_and_timing(n_mat_ctrl, action_fcurves)
+        self.set_flags_and_timing(n_mat_ctrl, action_fcurves, *b_action.frame_range)
 
         n_mat_ipol.data = n_key_data
 
@@ -223,9 +248,19 @@ class MaterialAnimation(AnimationCommon):
         n_mat_prop.add_controller(n_mat_ctrl)
 
         if n_ni_controller_sequence:
+            n_ni_blend_float_interpolator = block_store.create_block("NiBlendFloatInterpolator")
+
+            n_ni_blend_float_interpolator.array_size = 2
+            n_ni_blend_float_interpolator.reset_field("interp_array_items")
+
+            n_ni_blend_float_interpolator.value = consts.FLOAT_MIN
+            n_ni_blend_float_interpolator.flags.manager_controlled = True
+
             n_controlled_block = n_ni_controller_sequence.add_controlled_block()
             n_controlled_block.controller = n_mat_ctrl
             n_controlled_block.interpolator = n_mat_ipol
+
+            n_mat_ctrl.interpolator = n_ni_blend_float_interpolator
             
             n_controlled_block.node_name = n_ni_geometry.name
             n_controlled_block.property_type = "NiMaterialProperty"
