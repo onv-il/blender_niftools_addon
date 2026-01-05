@@ -73,4 +73,4 @@ class Constraint:
 
             b_constr = b_constr_obj.rigid_body_constraint
 
-            self.bhk_constraint_helper.export_bhk_constraint(b_constr, b_constr_obj)
+            self.bhk_constraint_helper.export_bhk_constraint(b_constr, b_constr_obj, n_root_node)

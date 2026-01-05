@@ -38,12 +38,40 @@
 #
 # ***** END LICENSE BLOCK *****
 
+import nifgen.formats.nif as NifFormat
+
 class ConstraintCommon:
     """Abstract base class containing functions and attributes shared between constraint export classes."""
 
     def __init__(self):
         self.n_root_node = None
         self.HAVOK_SCALE = None
+
+    @staticmethod
+    def get_transform_a_b(n_constraint_c_info, parent):
+        """Returns the transform of the first entity relative to the second
+        entity. Root is simply a nif block that is a common parent to both
+        blocks."""
+        # check entities
+        if n_constraint_c_info.num_entities != 2:
+            raise ValueError(
+                "cannot get tranform for constraint "
+                "that hasn't exactly 2 entities")
+        # find transform of entity A relative to entity B
+
+        # find chains from parent to A and B entities
+        chainA = parent.find_chain(n_constraint_c_info.entity_a)
+        chainB = parent.find_chain(n_constraint_c_info.entity_b)
+        # validate the chains
+        assert(isinstance(chainA[-1], NifFormat.classes.BhkRigidBody))
+        assert(isinstance(chainA[-2], NifFormat.classes.NiCollisionObject))
+        assert(isinstance(chainA[-3], NifFormat.classes.NiNode))
+        assert(isinstance(chainB[-1], NifFormat.classes.BhkRigidBody))
+        assert(isinstance(chainB[-2], NifFormat.classes.NiCollisionObject))
+        assert(isinstance(chainB[-3], NifFormat.classes.NiNode))
+        # return the relative transform
+        return (chainA[-3].get_transform(relative_to = parent)
+                * chainB[-3].get_transform(relative_to = parent).get_inverse())
 
     @staticmethod
     def attach_constraint(n_bhk_constraint, n_entity_a, n_entity_b):

@@ -37,12 +37,18 @@
 #
 # ***** END LICENSE BLOCK *****
 
+import mathutils
+
+import nifgen.formats.nif as NifFormat
 
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.modules.nif_export.constraint.havok.common import ConstraintCommon
 from io_scene_niftools.modules.nif_export.object import DICT_NAMES
-from io_scene_niftools.utils.logging import NifLog
+
 from nifgen.formats.nif import classes as NifClasses
+
+from io_scene_niftools.utils import math
+from io_scene_niftools.utils.logging import NifLog
 
 
 class BhkConstraint(ConstraintCommon):
@@ -52,7 +58,7 @@ class BhkConstraint(ConstraintCommon):
     For Bethesda games (except Morrowind) ONLY!
     """
 
-    def export_bhk_constraint(self, b_constr, b_constr_obj, ):
+    def export_bhk_constraint(self, b_constr, b_constr_obj, root_node):
 
         # Ensure constraint target objects will be exported as valid collision objects
         if not b_constr.object1 and not b_constr.object2:
@@ -65,8 +71,12 @@ class BhkConstraint(ConstraintCommon):
             return
 
         # Get target rigid bodies from object dictionary
-        n_entity_a = DICT_NAMES[b_constr.object1.name]
-        n_entity_b = DICT_NAMES[b_constr.object2.name]
+        #n_entity_a = DICT_NAMES[b_constr.object1.name]
+        n_entity_a = block_store.obj_to_block[b_constr.object1]
+
+        #n_entity_b = DICT_NAMES[b_constr.object2.name]
+        n_entity_b = block_store.obj_to_block[b_constr.object2]
+
 
         # Find constraint type and call export method
         n_bhk_constraint = None
@@ -85,7 +95,8 @@ class BhkConstraint(ConstraintCommon):
                 n_bhk_constraint = self.export_bhk_hinge_constraint(b_constr,
                                                                     b_constr_obj,
                                                                     n_entity_a,
-                                                                    n_entity_b)
+                                                                    n_entity_b,
+                                                                    root_node)
         elif b_constr.type == 'SLIDER':
             n_bhk_constraint = self.export_bhk_prismatic_constraint(b_constr,
                                                                     b_constr_obj,
@@ -152,9 +163,45 @@ class BhkConstraint(ConstraintCommon):
 
         return n_bhk_ragdoll_constraint
 
-    def export_bhk_hinge_constraint(self, b_constr, b_constr_obj, n_entity_a, n_entity_b):
+    def export_bhk_hinge_constraint(self, b_constr, b_constr_obj, n_entity_a, n_entity_b, root_node):
         n_bhk_hinge_constraint = block_store.create_block("bhkHingeConstraint")
+
+        n_constraint_info = n_bhk_hinge_constraint.constraint_info
+        n_constraint = n_bhk_hinge_constraint.constraint
+
+        vector_axis_a = mathutils.Vector((0, 0, 1))
+        quat_axis_a = vector_axis_a.to_track_quat("Z", "Y")
+
+        vector_axis_a_perp = vector_axis_a.orthogonal()
+        quat_axis_a_perp = vector_axis_a_perp.to_track_quat("X", "Y")
+
+        quat_cross = quat_axis_a.cross(quat_axis_a_perp)
+
+        n_constraint.axis_a.x = quat_axis_a.x
+        n_constraint.axis_a.y = quat_axis_a.y
+        n_constraint.axis_a.z = quat_axis_a.z
+        n_constraint.axis_a.w = quat_axis_a.w
+
+        n_constraint.perp_axis_in_a_1.x = quat_axis_a_perp.x
+        n_constraint.perp_axis_in_a_1.y = quat_axis_a_perp.y
+        n_constraint.perp_axis_in_a_1.z = quat_axis_a_perp.z
+        n_constraint.perp_axis_in_a_1.w = quat_axis_a_perp.w
+
+        n_constraint.perp_axis_in_a_2.x = quat_cross.x
+        n_constraint.perp_axis_in_a_2.y = quat_cross.y
+        n_constraint.perp_axis_in_a_2.z = quat_cross.z
+        n_constraint.perp_axis_in_a_2.w = quat_cross.w
+
+        bind_quaternion = math.get_object_bind(b_constr_obj).to_quaternion()
+
+        n_constraint.pivot_a.x = bind_quaternion.x
+        n_constraint.pivot_a.y = bind_quaternion.y
+        n_constraint.pivot_a.z = bind_quaternion.z
+        n_constraint.pivot_a.w = bind_quaternion.w
+
         ConstraintCommon.attach_constraint(n_bhk_hinge_constraint, n_entity_a, n_entity_b)
+
+        n_constraint.update_a_b(ConstraintCommon.get_transform_a_b(n_constraint_info, root_node))
 
         return n_bhk_hinge_constraint
 
