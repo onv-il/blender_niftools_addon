@@ -115,7 +115,6 @@ class TextureAnimation(AnimationCommon):
             n_tex_desc.transform_method = NifClasses.TransformMethod.MAX
             n_tex_desc.center.u, n_tex_desc.center.v = (0.5, 0.5)
 
-
             # actionFCurves = b_action.layers[0].strips[0].channelbag(b_action.slots[0]).fcurves
             action_fcurves = self.get_fcurves_from_action(b_action)
 
@@ -134,7 +133,7 @@ class TextureAnimation(AnimationCommon):
 
                 # Export NiTextureTransformController
                 n_ni_texture_transform_controller = self.export_ni_texture_transform_controller(
-                    n_ni_texturing_property, fcurve, b_action, operation
+                    n_ni_texturing_property, action_fcurves, fcurve, b_action, operation
                 )
 
                 # Attach to sequence if present
@@ -143,17 +142,17 @@ class TextureAnimation(AnimationCommon):
                         n_ni_texture_transform_controller, n_ni_controller_sequence, n_ni_geometry, operation
                     )
 
-    def export_ni_texture_transform_controller(self, n_ni_texturing_property, fcurve, b_action, operation):
+    def export_ni_texture_transform_controller(self, n_ni_texturing_property, action_fcurves, fcurve, b_action, operation):
         """Export a NiTextureTransformController block."""
 
         NifLog.warn("Exporting NiTextureTransformController!")
 
         n_ni_texture_transform_controller = block_store.create_block("NiTextureTransformController")
+        
+        self.set_flags_and_timing(n_ni_texture_transform_controller, action_fcurves, *b_action.frame_range)
 
         n_ni_texture_transform_controller.texture_slot = NifClasses.TexType.BASE_MAP
         n_ni_texture_transform_controller.operation = operation[0]
-        n_ni_texture_transform_controller.start_time = b_action.frame_start / self.fps
-        n_ni_texture_transform_controller.stop_time = b_action.frame_end / self.fps
 
         # Create interpolators and data
         n_ni_float_interpolator = block_store.create_block("NiFloatInterpolator")
@@ -273,7 +272,7 @@ class TextureAnimation(AnimationCommon):
         # if uv data is present then add the controller so it is exported
         if b_f_curves[0].keyframe_points:
             n_ni_uv_controller = NifClasses.NiUVController(NifData.data)
-            self.set_flags_and_timing(n_ni_uv_controller, b_f_curves)
+            self.set_flags_and_timing(n_ni_uv_controller, b_f_curves, *b_action.frame_range)
             n_ni_uv_controller.data = n_uv_data
             # attach block to geometry
             n_ni_geometry.add_controller(n_ni_uv_controller)
