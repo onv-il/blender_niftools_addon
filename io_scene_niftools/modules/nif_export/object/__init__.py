@@ -50,7 +50,6 @@ from io_scene_niftools.utils.logging import NifLog
 
 DICT_NAMES = {}  # Dictionary to map Blender object names to NIF blocks
 
-
 class Object:
     """
     Main interface class for exporting basic NIF blocks
@@ -90,7 +89,7 @@ class Object:
             self.n_root_node = types.create_ninode()
             self.n_root_node.name = "Scene Root"
             for b_obj in b_root_objects:
-                self.export_object_hierarchy(b_obj, self.n_root_node)
+                self.export_object_hierarchy(b_obj, self.n_root_node, b_obj.nif_object.nodetype)
 
         # Export extra data
         self.object_property_helper.export_root_node_properties(self.n_root_node, b_obj)
@@ -109,7 +108,7 @@ class Object:
         """
 
         # Can we export this object?
-        if not b_obj or not b_obj in self.b_exportable_objects:
+        if not b_obj or not b_obj in self.b_exportable_objects or b_obj.particle_systems:
             return None
 
         if b_obj.type == 'MESH':
@@ -132,7 +131,7 @@ class Object:
                             f"The NIF format does not support this. Ignoring...")
 
         # Everything else (empty/armature) is a node
-        n_node = types.create_ninode(b_obj, n_node_type=n_node_type)
+        n_node = block_store.create_block(n_node_type, b_obj)
 
         if not self.n_root_node:
             self.n_root_node = n_node
@@ -148,6 +147,8 @@ class Object:
 
         self.object_property_helper.export_object_properties(b_obj, n_node)  # Object properties
 
+        DICT_NAMES[b_obj.name] = n_node
+
         if b_obj.type == 'MESH':
             # If b_obj is a multi-material mesh, export the geometries as children of this node
             n_ni_geometry = self.mesh_helper.export_geometry(b_obj, n_node, self.n_root_node)
@@ -162,16 +163,15 @@ class Object:
                     # Find the correct n_node
                     # TODO [object]: This is essentially the same as Geometry.get_bone_block()
                     n_node = [k for k, v in block_store.block_to_obj.items() if v == b_obj_bone][0]
-                    self.export_object_hierarchy(b_child, n_node)
+                    self.export_object_hierarchy(b_child, n_node, "NiNode")
                 # Just child of the armature itself, so attach to armature root
                 else:
-                    self.export_object_hierarchy(b_child, n_node)
+                    self.export_object_hierarchy(b_child, n_node, "NiNode")
         else:
             # Export all children of this empty object as children of this node
             for b_child in b_obj.children:
-                self.export_object_hierarchy(b_child, n_node)
-
-        DICT_NAMES[b_obj.name] = n_node
+                self.export_object_hierarchy(b_child, n_node, b_child.nif_object.nodetype)
+                
         return n_node
 
     def set_object_flags(self, b_obj, n_node):
