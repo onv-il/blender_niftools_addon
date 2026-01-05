@@ -92,31 +92,45 @@ class Modifier:
 
     def export_ni_p_sys_rotation_modifier(self, b_p_obj, b_particle_system, nif_particle_settings, n_ni_particle_system):
         b_particle_system_settings = b_particle_system.settings
+        ni_p_sys_data = n_ni_particle_system.data
 
         ni_p_sys_rotation_modifier = create_ni_p_sys_modifier(b_p_obj, "NiPSysRotationModifier", NifClasses.NiPSysModifierOrder.ORDER_GENERAL, n_ni_particle_system)
 
-        ni_p_sys_rotation_modifier.rotation_speed = b_particle_system_settings.angular_velocity_factor
-        ni_p_sys_rotation_modifier.rotation_speed_variation
-
-        ni_p_sys_rotation_modifier.rotation_angle = math.radians(b_particle_system_settings.phase_factor * 180)
-
         phase_factor_random = b_particle_system_settings.phase_factor_random
 
-        if phase_factor_random < 1:
-            ni_p_sys_rotation_modifier.rotation_angle_variation = math.radians(phase_factor_random * 180)
-        else:
-            ni_p_sys_rotation_modifier.rotation_angle_variation = math.radians((phase_factor_random - 1) * 180)
+        if b_particle_system_settings.angular_velocity_factor != 0:
+            ni_p_sys_data.has_rotation_speeds = True
+
+            ni_p_sys_rotation_modifier.rotation_speed = b_particle_system_settings.angular_velocity_factor
+            ni_p_sys_rotation_modifier.rotation_speed_variation = b_particle_system_settings.angular_velocity_factor * phase_factor_random
+
+        if b_particle_system_settings.phase_factor != 0:
+            ni_p_sys_data.has_rotations = True
+
+            ni_p_sys_rotation_modifier.rotation_angle = math.radians(b_particle_system_settings.phase_factor * 180)
+            
+            if phase_factor_random < 1:
+                ni_p_sys_rotation_modifier.rotation_angle_variation = math.radians(phase_factor_random * 180)
+            else:
+                ni_p_sys_rotation_modifier.rotation_angle_variation = math.radians((phase_factor_random - 1) * 180)
 
         ni_p_sys_rotation_modifier.random_rot_speed_sign = nif_particle_settings.random_rot_speed_sign
 
         ni_p_sys_rotation_modifier.random_axis = True if b_particle_system_settings.angular_velocity_mode == 'VELOCITY' else False
 
         if b_particle_system_settings.rotation_mode.endswith("Y"):
+            ni_p_sys_data.has_rotation_axes = True
             ni_p_sys_rotation_modifier.axis = (0, 1 ,0)
         elif b_particle_system_settings.rotation_mode.endswith("Z"):
+            ni_p_sys_data.has_rotation_axes = True
             ni_p_sys_rotation_modifier.axis = (0, 0 ,1)
         else:
+            ni_p_sys_data.has_rotation_axes = True
             ni_p_sys_rotation_modifier.axis = (1, 0,0)
+
+        n_data = n_ni_particle_system.data
+
+        n_data.has_rotations = True
         
         return ni_p_sys_rotation_modifier
     
@@ -138,12 +152,29 @@ class Modifier:
 
         return bs_wind_modifier
     
-    def export_ni_p_sys_color_modifier(self, b_p_obj, b_particle_system, n_ni_particle_system):
-        b_particle_system_settings = b_particle_system.settings
+    def export_ni_p_sys_color_modifier(self, b_obj, rgba_fcurves, n_ni_particle_system):
+        color_fcurves = rgba_fcurves[0]
+        alpha_fcurves = rgba_fcurves[1]
 
-        n_p_sys_color_modifier = create_ni_p_sys_modifier(b_p_obj, "NiPSysColorModifier", NifClasses.NiPSysModifierOrder.ORDER_GENERAL, n_ni_particle_system)
+        ni_p_sys_color_modifier = create_ni_p_sys_modifier(b_obj, "NiPSysColorModifier", NifClasses.NiPSysModifierOrder.ORDER_GENERAL, n_ni_particle_system)
+        n_color_data = block_store.create_block("NiColorData")
 
-        return n_p_sys_color_modifier
+        ni_p_sys_color_modifier.data = n_color_data
+
+        n_color_data.data.num_keys = len(color_fcurves)
+        n_color_data.data.interpolation = NifClasses.KeyType.LINEAR_KEY
+        n_color_data.data.reset_field("keys")
+
+        for key, (frame, color), (frame, alpha) in zip(n_color_data.data.keys, color_fcurves, alpha_fcurves):
+            key.time = frame / self.fps
+            key.value.r = color.r
+            key.value.g = color.g
+            key.value.b = color.b
+            key.value.a = alpha
+            
+        add_modifier(n_ni_particle_system, ni_p_sys_color_modifier)
+
+        return ni_p_sys_color_modifier
     
     def export_bs_p_sys_subtex_modifier(self, b_p_obj, b_particle_system, n_ni_particle_system):
         b_particle_system_settings = b_particle_system.settings
