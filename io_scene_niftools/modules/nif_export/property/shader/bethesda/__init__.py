@@ -46,6 +46,8 @@ import io_scene_niftools.utils.math
 from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.modules.nif_export.property.texture.bethesda import BSShaderTextureSet
 from io_scene_niftools.modules.nif_export.property.texture.texture import NiTexturingProperty
+
+from io_scene_niftools.utils.logging import NifLog, NifError
 from io_scene_niftools.utils.math import color_blender_to_nif
 
 from nifgen.formats.nif import classes as NifClasses
@@ -122,7 +124,10 @@ class BSShaderProperty:
 
         self.bs_shader_texture_set_helper.export_bs_lighting_shader_property_textures(n_bs_lighting_shader_property)
 
-        b_principled_bsdf = b_mat.node_tree.nodes["Principled BSDF"]
+        b_principled_bsdf = next((node for node in b_mat.node_tree.nodes if isinstance(node, bpy.types.ShaderNodeBsdfPrincipled)), None)
+
+        if b_principled_bsdf is None:
+            raise NifError(f"{b_mat.name} must have a Principled BSDF to export a BSLightingShaderProperty!")
 
         if b_principled_bsdf.inputs['Emission Color'].is_linked:
             b_color_node = b_principled_bsdf.inputs['Emission Color'].links[0].from_node
