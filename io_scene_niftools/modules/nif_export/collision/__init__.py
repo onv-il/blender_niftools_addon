@@ -40,10 +40,11 @@
 
 import bpy
 
+from io_scene_niftools.modules.nif_export.block_registry import block_store
+
 from io_scene_niftools.modules.nif_export.collision.bound import Bound, NiCollision
 from io_scene_niftools.modules.nif_export.collision.havok import BhkCollision
 from io_scene_niftools.modules.nif_export.collision.havok.animation import BhkBlendCollision
-from io_scene_niftools.modules.nif_export.object import DICT_NAMES
 from io_scene_niftools.utils.logging import NifLog
 
 from nifgen.formats.nif import classes as NifClasses
@@ -77,9 +78,10 @@ class Collision:
 
             # Get parent node from object dictionary
             if b_col_obj.parent:
-                n_parent_node = DICT_NAMES[b_col_obj.parent.name]
+                #n_parent_node = DICT_NAMES[b_col_obj.parent.name]
+                n_parent_node = block_store.obj_to_block[b_col_obj.parent]
             else:
-                n_parent_node = DICT_NAMES[b_col_obj.name]
+                n_parent_node = block_store.obj_to_block[b_col_obj]
 
             if "bound" in b_col_obj.name.lower():
                 # Export bounding boxes
@@ -101,9 +103,8 @@ class Collision:
 
                 elif self.target_game in ('FALLOUT_3', 'Fallout_NV'):
                     if NifClasses.Fallout3Layer.from_value(layer) == 'FOL_BIPED':
-                        self.bhk_blend_collision_helper.export_bhk_blend_collision(b_col_obj)
-                        #collisionObject = self.bhk_blend_collision_helper.export_bhk_blend_collision(b_col_obj)
-                        #n_parent_node.collision_object = collisionObject
+                        collisionObject = self.bhk_blend_collision_helper.export_bhk_blend_collision(b_col_obj)
+                        n_parent_node.collision_object = collisionObject
 
                 self.bhk_collision_helper.export_bhk_collision(b_col_obj, n_parent_node, layer)
 

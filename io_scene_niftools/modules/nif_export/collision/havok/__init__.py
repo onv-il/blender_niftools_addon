@@ -42,7 +42,7 @@ from io_scene_niftools.modules.nif_export.block_registry import block_store
 from io_scene_niftools.modules.nif_export.collision.havok.common import BhkCollisionCommon
 from io_scene_niftools.modules.nif_export.collision.havok.mopp_shape import BhkMOPPShape
 from io_scene_niftools.modules.nif_export.collision.havok.shape import BhkShape
-from io_scene_niftools.modules.nif_export.object import DICT_NAMES
+# from io_scene_niftools.modules.nif_export.object import DICT_NAMES
 from io_scene_niftools.utils.singleton import NifData
 from nifgen.formats.nif import classes as NifClasses
 
@@ -103,7 +103,8 @@ class BhkCollision(BhkCollisionCommon):
         if b_col_obj.nif_collision.use_blender_properties:
             self.update_rigid_body(b_col_obj, n_bhk_rigid_body)
 
-        DICT_NAMES[b_col_obj.name] = n_bhk_rigid_body
+        # DICT_NAMES[b_col_obj.name] = n_bhk_rigid_body
+        block_store.obj_to_block[b_col_obj] = n_bhk_rigid_body
 
     def __export_bhk_collision_object(self, b_obj, layer):
         """
