@@ -75,7 +75,7 @@ class NifExportOperator(Operator, ExportHelper, CommonDevOperator, CommonNif, Co
     stripify: bpy.props.BoolProperty(
         name="Stripify Geometries",
         description="Stripify geometries",
-        default=True,
+        default=False,
         options={'HIDDEN'})
 
     # Flatten skin.
@@ -139,6 +139,18 @@ class NifExportOperator(Operator, ExportHelper, CommonDevOperator, CommonNif, Co
     use_visible: bpy.props.BoolProperty(
         name="Visible Objects",
         description="Export visible objects only.",
+        default=False)
+    
+        # Export selected objects only.
+    use_renderable: bpy.props.BoolProperty(
+        name="Renderable Objects",
+        description="Export renderable objects only.",
+        default=False)
+    
+            # Export selected objects only.
+    use_active_collection: bpy.props.BoolProperty(
+        name="Active Collection",
+        description="Export objects in the active collection only.",
         default=False)
     
     # Export selected objects only.

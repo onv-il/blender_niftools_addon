@@ -85,6 +85,7 @@ class NifExport(NifCommon):
         self.b_constraint_objects = []
         self.b_particle_objects = []
         self.b_force_field_objects = []
+        self.b_custom_property_objects = []
 
         # Common export properties
         self.target_game = None
@@ -97,6 +98,7 @@ class NifExport(NifCommon):
         """Main NIF export function."""
 
         block_store.block_to_obj = {}  # Clear data from last export attempt
+        block_store.obj_to_block = {}
 
         # Bpy functions are sensitive to the UI context; force it to object mode for now
         if bpy.context.mode != 'OBJECT':
@@ -133,7 +135,7 @@ class NifExport(NifCommon):
 
             # Export remaining block type categories
             self.collision_helper.export_collision(self.b_collision_objects)
-            # self.constraint_helper.export_constraints(self.b_constraint_objects, n_root_node)
+            self.constraint_helper.export_constraints(self.b_constraint_objects, n_root_node)
             self.particle_helper.export_particles(self.b_particle_objects, self.b_force_field_objects, n_root_node)
             self.animation_helper.export_animations(self.b_main_objects, n_root_node)
 
@@ -163,14 +165,19 @@ class NifExport(NifCommon):
         collision objects, constraints, and particle systems.
         """
 
-        objectsToSearch = None
+        objectsToSearch = set()
 
         if NifOp.props.use_selected:
-            objectsToSearch = bpy.context.selected_objects
-        elif NifOp.props.use_visible:
-            objectsToSearch = bpy.context.visible_objects
-        else:
-            objectsToSearch = bpy.context.scene.objects
+            objectsToSearch.update(bpy.context.selected_objects)
+
+        if NifOp.props.use_visible:
+            objectsToSearch.update(bpy.context.visible_objects)
+
+        if NifOp.props.use_renderable:
+            objectsToSearch.update([obj for obj in bpy.context.scene.objects if obj.hide_render is False])
+
+        if NifOp.props.use_active_collection:
+            objectsToSearch.update(bpy.context.collection.objects)
 
         for b_obj in objectsToSearch:
             if b_obj.type in self.export_types:
@@ -190,7 +197,6 @@ class NifExport(NifCommon):
                     self.b_main_objects.remove(b_obj)
                 elif b_obj.particle_systems:
                     self.b_particle_objects.append(b_obj)
-                    self.b_main_objects.remove(b_obj)
                 elif b_obj.field:
                     self.b_force_field_objects.append(b_obj)
 
