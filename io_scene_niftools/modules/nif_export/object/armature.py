@@ -77,7 +77,7 @@ class Armature:
     def export_bone(self, b_obj, b_bone, n_parent_node, n_root_node):
         """Exports a bone and all of its children."""
         # create a new nif block for this b_bone
-        n_node = types.create_ninode(b_bone)
+        n_node = block_store.create_block("NiNode", b_bone)
         n_node.name = block_store.get_full_name(b_bone)
         # link to nif parent node
         n_parent_node.add_child(n_node)
