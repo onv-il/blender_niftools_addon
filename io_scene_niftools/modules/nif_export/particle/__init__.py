@@ -128,6 +128,8 @@ class Particle:
         n_ni_particle_system.flags = b_p_obj.nif_object.flags
         n_ni_particle_system.name = b_p_obj.name
 
+        DICT_NAMES[b_p_obj.name] = n_ni_particle_system
+
         n_emitter = None
 
         if nif_particle_settings.particle_emitter_type == "NiPSysSphereEmitter":
@@ -192,7 +194,11 @@ class Particle:
         # X and Z specify the horizontal and vertical position and positive values move rightward and downward respectively.
         # Y and W define the height and width of the section in relation to the texture's height and width, respectively.
 
-        principled_bsdf = b_material.node_tree.nodes["Principled BSDF"]
+        principled_bsdf = next((node for node in b_material.node_tree.nodes if isinstance(node, bpy.types.ShaderNodeBsdfPrincipled)), None)
+
+        if principled_bsdf is None:
+            raise NifError(f"{b_material.name} must have a single Principled BSDF for particle emitter export!")
+
         color_input = principled_bsdf.inputs[0]
         alpha_input = principled_bsdf.inputs[4]
 
