@@ -37,7 +37,7 @@
 #
 # ***** END LICENSE BLOCK *****
 
-
+import bpy
 from bpy.types import Panel
 from io_scene_niftools.utils.decorators import register_classes, unregister_classes
 from nifgen.formats.nif import classes as NifClasses
@@ -101,7 +101,11 @@ class ShaderFlags1Panel(Panel):
         return False
 
     def draw(self, context):
+        
+
         layout = self.layout
+
+        niftool_scene = bpy.context.scene.niftools_scene
 
         shader_setting = context.active_object.active_material.nif_shader
 
@@ -131,6 +135,8 @@ class ShaderFlags2Panel(Panel):
         return False
 
     def draw(self, context):
+        self.niftools_scene = bpy.context.scene.niftools_scene
+
         layout = self.layout
 
         shader_setting = context.active_object.active_material.nif_shader
@@ -139,7 +145,16 @@ class ShaderFlags2Panel(Panel):
 
         if not shader_setting.bs_shadertype in ('BSLightingShaderProperty', 'BSEffectShaderProperty'):
             for property_name in sorted(NifClasses.BSShaderFlags2.__members__):
-                box.prop(shader_setting, property_name)
+
+                override_text = None
+
+                if self.niftools_scene.is_fo3():
+                    if "unknown_10" in property_name:
+                        override_text = "Real Time Reflections"
+                    elif "unknown_9" in property_name:
+                        override_text = "Soft Shading"
+
+                box.prop(shader_setting, property_name, text=override_text)
 
         elif shader_setting.bs_shadertype in ('BSLightingShaderProperty', 'BSEffectShaderProperty'):
             for property_name in sorted(NifClasses.SkyrimShaderPropertyFlags2.__members__):
