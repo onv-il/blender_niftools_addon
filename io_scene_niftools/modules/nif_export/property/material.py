@@ -94,47 +94,47 @@ class MaterialProperty:
 
         n_ni_material_property.flags = b_mat.nif_material.material_flags
 
-        b_shader_node = b_mat.node_tree.nodes["Principled BSDF"]
+        b_shader_node = next((node for node in b_mat.node_tree.nodes if isinstance(node, bpy.types.ShaderNodeBsdfPrincipled)), None)
 
-        b_ambient_value = b_shader_node.inputs[26].default_value
-        b_diffuse_value = b_shader_node.inputs[22].default_value
-        b_specular_value = b_shader_node.inputs[14].default_value
+        if b_shader_node is not None:
+            b_ambient_value = b_shader_node.inputs[26].default_value
+            b_diffuse_value = b_shader_node.inputs[22].default_value
+            b_specular_value = b_shader_node.inputs[14].default_value
 
-        b_ambient_color = mathutils.Color((b_ambient_value[0], b_ambient_value[1], b_ambient_value[2]))
-        b_diffuse_color = mathutils.Color((b_diffuse_value[0], b_diffuse_value[1], b_diffuse_value[2]))
-        b_specular_color = mathutils.Color((b_specular_value[0], b_specular_value[1], b_specular_value[2]))
+            b_ambient_color = mathutils.Color((b_ambient_value[0], b_ambient_value[1], b_ambient_value[2]))
+            b_diffuse_color = mathutils.Color((b_diffuse_value[0], b_diffuse_value[1], b_diffuse_value[2]))
+            b_specular_color = mathutils.Color((b_specular_value[0], b_specular_value[1], b_specular_value[2]))
 
+            (n_ni_material_property.ambient_color.r, n_ni_material_property.ambient_color.g,
+                n_ni_material_property.ambient_color.b) = b_ambient_color.from_scene_linear_to_srgb()
 
-        (n_ni_material_property.ambient_color.r, n_ni_material_property.ambient_color.g,
-            n_ni_material_property.ambient_color.b) = b_ambient_color.from_scene_linear_to_srgb()
+            (n_ni_material_property.diffuse_color.r, n_ni_material_property.diffuse_color.g,
+                n_ni_material_property.diffuse_color.b) = b_diffuse_color.from_scene_linear_to_srgb()
 
-        (n_ni_material_property.diffuse_color.r, n_ni_material_property.diffuse_color.g,
-            n_ni_material_property.diffuse_color.b) = b_diffuse_color.from_scene_linear_to_srgb()
+            (n_ni_material_property.specular_color.r, n_ni_material_property.specular_color.g,
+                n_ni_material_property.specular_color.b) = b_specular_color.from_scene_linear_to_srgb()
 
-        (n_ni_material_property.specular_color.r, n_ni_material_property.specular_color.g,
-            n_ni_material_property.specular_color.b) = b_specular_color.from_scene_linear_to_srgb()
+            if b_shader_node.inputs['Emission Color'].is_linked:
+                b_color_node = b_shader_node.inputs['Emission Color'].links[0].from_node
+                if isinstance(b_color_node, bpy.types.ShaderNodeMixRGB):
+                    b_emission_value = b_color_node.inputs['Color2'].default_value
+                    b_emission_color = mathutils.Color((b_emission_value[0], b_emission_value[1], b_emission_value[2]))
 
-        if b_shader_node.inputs['Emission Color'].is_linked:
-            b_color_node = b_shader_node.inputs['Emission Color'].links[0].from_node
-            if isinstance(b_color_node, bpy.types.ShaderNodeMixRGB):
-                b_emission_value = b_color_node.inputs['Color2'].default_value
+                    (n_ni_material_property.emissive_color.r, n_ni_material_property.emissive_color.g,
+                        n_ni_material_property.emissive_color.b) = b_emission_color.from_scene_linear_to_srgb()
+            else:
+                b_emission_value = b_shader_node.inputs['Emission Color'].default_value
                 b_emission_color = mathutils.Color((b_emission_value[0], b_emission_value[1], b_emission_value[2]))
 
                 (n_ni_material_property.emissive_color.r, n_ni_material_property.emissive_color.g,
                     n_ni_material_property.emissive_color.b) = b_emission_color.from_scene_linear_to_srgb()
-        else:
-            b_emission_value = b_shader_node.inputs['Emission Color'].default_value
-            b_emission_color = mathutils.Color((b_emission_value[0], b_emission_value[1], b_emission_value[2]))
 
-            (n_ni_material_property.emissive_color.r, n_ni_material_property.emissive_color.g,
-                n_ni_material_property.emissive_color.b) = b_emission_color.from_scene_linear_to_srgb()
+            # Map specular IOR level (0.0 - 1.0) to glossiness (0.0 - 128.0)
+            n_ni_material_property.glossiness = (1 - b_shader_node.inputs['Specular IOR Level'].default_value) * 128
 
-        # Map specular IOR level (0.0 - 1.0) to glossiness (0.0 - 128.0)
-        n_ni_material_property.glossiness = (1 - b_shader_node.inputs['Specular IOR Level'].default_value) * 128
+            n_ni_material_property.alpha = b_shader_node.inputs[4].default_value
 
-        n_ni_material_property.alpha = b_shader_node.inputs[4].default_value
-
-        n_ni_material_property.emissive_mult = b_shader_node.inputs[28].default_value
+            n_ni_material_property.emissive_mult = b_shader_node.inputs[28].default_value
 
         # search for duplicate
         # (ignore the name string as sometimes import needs to create different materials even when NiMaterialProperty is the same)
